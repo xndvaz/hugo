@@ -35,6 +35,7 @@ func MarshalPageToJSON(p Page) ([]byte, error) {
 	kind := p.Kind()
 	layout := p.Layout()
 	linkTitle := p.LinkTitle()
+	isBranch := p.IsBranch()
 	isNode := p.IsNode()
 	isPage := p.IsPage()
 	path := p.Path()
@@ -60,6 +61,7 @@ func MarshalPageToJSON(p Page) ([]byte, error) {
 		Kind        string
 		Layout      string
 		LinkTitle   string
+		IsBranch    bool
 		IsNode      bool
 		IsPage      bool
 		Path        string
@@ -84,6 +86,7 @@ func MarshalPageToJSON(p Page) ([]byte, error) {
 		Kind:        kind,
 		Layout:      layout,
 		LinkTitle:   linkTitle,
+		IsBranch:    isBranch,
 		IsNode:      isNode,
 		IsPage:      isPage,
 		Path:        path,
