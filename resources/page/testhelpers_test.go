@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gohugoio/hugo/markup/tableofcontents"
+	"github.com/gohugoio/hugo/resources/kinds"
 
 	"github.com/gohugoio/hugo/resources/resource"
 
@@ -275,6 +276,10 @@ func (p *testPage) IsHome() bool {
 
 func (p *testPage) IsMenuCurrent(menuID string, inme *navigation.MenuEntry) bool {
 	panic("testpage: not implemented")
+}
+
+func (p *testPage) IsBranch() bool {
+	return kinds.IsBranch(p.kind)
 }
 
 func (p *testPage) IsNode() bool {

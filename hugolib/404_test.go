@@ -86,6 +86,42 @@ IsPage: {{ .IsPage }}|
 	)
 }
 
+// See issue 11574.
+func TestIsBranch(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+baseURL = "http://example.com/"
+disableKinds = ["rss", "sitemap", "taxonomy", "term"]
+-- layouts/home.html --
+Home: {{ .IsBranch }}|
+-- layouts/page.html --
+Page: {{ .IsBranch }}|
+-- layouts/section.html --
+Section: {{ .IsBranch }}|
+-- layouts/404.html --
+404: {{ .IsBranch }}|
+-- content/p1.md --
+---
+title: "P1"
+---
+P1
+-- content/blog/_index.md --
+---
+title: "Blog"
+---
+Blog
+`
+
+	b := Test(t, files)
+
+	b.AssertFileContent("public/index.html", "Home: true|")
+	b.AssertFileContent("public/p1/index.html", "Page: false|")
+	b.AssertFileContent("public/blog/index.html", "Section: true|")
+	b.AssertFileContent("public/404.html", "404: false|")
+}
+
 func Test404EditTemplate(t *testing.T) {
 	t.Parallel()
 

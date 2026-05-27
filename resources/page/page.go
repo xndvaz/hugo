@@ -221,6 +221,10 @@ type PageMetaProvider interface {
 	// The title used for links.
 	LinkTitle() string
 
+	// IsBranch returns whether this is one of Hugo's branch kinds,
+	// i.e. home, section, taxonomy, or term.
+	IsBranch() bool
+
 	// IsNode returns whether this is an item of one of the list types in Hugo,
 	// i.e. not a regular content
 	IsNode() bool

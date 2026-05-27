@@ -223,6 +223,10 @@ func (p *nopPage) IsMenuCurrent(menuID string, inme *navigation.MenuEntry) bool 
 	return false
 }
 
+func (p *nopPage) IsBranch() bool {
+	return false
+}
+
 func (p *nopPage) IsNode() bool {
 	return false
 }
