@@ -22,7 +22,6 @@ import (
 
 	qt "github.com/frankban/quicktest"
 
-	"github.com/bep/logg"
 	"github.com/gohugoio/hugo/common/paths"
 	"github.com/gohugoio/hugo/htesting"
 	"github.com/gohugoio/hugo/hugolib"
@@ -244,8 +243,8 @@ Defer:
 `
 	b := hugolib.Test(t, files, hugolib.TestOptWithOSFs())
 	b.AssertPublishDir(
-		"en/mybatch/chunk-TOZKWCDE.js", "en/mybatch/mygroup.js ",
-		"fr/mybatch/mygroup.js", "fr/mybatch/chunk-TOZKWCDE.js")
+		"en/mybatch/chunk-MO3Q4WT6.js", "en/mybatch/mygroup.js ",
+		"fr/mybatch/mygroup.js", "fr/mybatch/chunk-MO3Q4WT6.js")
 }
 
 func TestBatchRenameBundledScript(t *testing.T) {
@@ -260,6 +259,26 @@ func TestBatchRenameBundledScript(t *testing.T) {
 	// Rename it back.
 	b.RenameFile("content/p1/p1script2.js", "content/p1/p1script.js")
 	b.Build()
+}
+
+func TestBatchMissingImportedAssetIssue13737(t *testing.T) {
+	files := jsBatchFilesTemplate
+	b := hugolib.TestRunning(t, files, hugolib.TestOptWithOSFs())
+	b.AssertFileContent("public/mybatch/mygroup.js", "Hello, Main")
+
+	filename := filepath.Join(b.Cfg.WorkingDir, "assets/js/main.js")
+	content, err := os.ReadFile(filename)
+	b.Assert(err, qt.IsNil)
+	b.Assert(os.Remove(filename), qt.IsNil)
+
+	_, err = b.BuildE()
+	b.Assert(err, qt.IsNotNil)
+	b.Assert(err.Error(), qt.Contains, "failed to read import")
+	b.Assert(err.Error(), qt.Contains, "main.js")
+
+	b.Assert(os.WriteFile(filename, content, 0o666), qt.IsNil)
+	b.Build()
+	b.AssertFileContent("public/mybatch/mygroup.js", "Hello, Main")
 }
 
 func TestBatchErrorScriptResourceNotSet(t *testing.T) {
@@ -383,7 +402,7 @@ export default function P1Script() {};
 	b.AssertFileContent("public/mybatch/mygroup.js", "sourceMappingURL=mygroup.js.map")
 	b.AssertFileContent("public/mybatch/p1.js", "sourceMappingURL=p1.js.map")
 	b.AssertFileContent("public/mybatch/mygroup_run_runner.js", "sourceMappingURL=mygroup_run_runner.js.map")
-	b.AssertFileContent("public/mybatch/chunk-UQKPPNA6.js", "sourceMappingURL=chunk-UQKPPNA6.js.map")
+	b.AssertFileContent("public/mybatch/chunk-3REXYBSZ.js", "sourceMappingURL=chunk-3REXYBSZ.js.map")
 
 	checkMap := func(p string, expectLen int) {
 		s := b.FileContent(p)
@@ -402,7 +421,7 @@ export default function P1Script() {};
 	checkMap("public/mybatch/mygroup.js.map", 1)
 	checkMap("public/mybatch/p1.js.map", 1)
 	checkMap("public/mybatch/mygroup_run_runner.js.map", 0)
-	checkMap("public/mybatch/chunk-UQKPPNA6.js.map", 1)
+	checkMap("public/mybatch/chunk-3REXYBSZ.js.map", 1)
 }
 
 func TestBatchErrorRunnerResourceNotSet(t *testing.T) {
@@ -679,16 +698,7 @@ Home.
  
 `
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:               t,
-			NeedsOsFS:       true,
-			NeedsNpmInstall: true,
-			TxtarString:     files,
-			Running:         true,
-			LogLevel:        logg.LevelWarn,
-			// PrintAndKeepTempDir: true,
-		}).Build()
+	b := hugolib.TestRunning(t, files, hugolib.TestOptWithOSFs(), hugolib.TestOptWithNpmInstall(), hugolib.TestOptWarn())
 
 	b.AssertFileContent("public/index.html",
 		"mains: 0: /mybundle/mains.js",

@@ -87,9 +87,8 @@ func (a *AsciiDocConverter) Supports(_ identity.Identity) bool {
 // GetAsciiDocContent calls asciidoctor as an external helper to convert
 // AsciiDoc content to HTML.
 func (a *AsciiDocConverter) GetAsciiDocContent(src []byte, ctx converter.DocumentContext) ([]byte, error) {
-	if ok, err := HasAsciiDoc(); !ok {
-		a.Cfg.Logger.Errorf("leaving AsciiDoc content unrendered: %s", err.Error())
-		return src, nil
+	if !hexec.InPath(asciiDocBinaryName) {
+		return nil, fmt.Errorf("asciidoctor not found in $PATH, cannot render %q", ctx.DocumentName)
 	}
 
 	args, err := a.ParseArgs(ctx)
@@ -319,7 +318,7 @@ func (a *AsciiDocConverter) extractTOC(src []byte) ([]byte, *tableofcontents.Fra
 		toVisit []*html.Node
 	)
 	f = func(n *html.Node) bool {
-		if n.Type == html.ElementNode && n.Data == "div" && attr(n, "id") == "toc" {
+		if n.Type == html.ElementNode && (n.Data == "div" || n.Data == "nav") && attr(n, "id") == "toc" {
 			toc = parseTOC(n)
 			if !a.Cfg.MarkupConfig().AsciiDocExt.PreserveTOC {
 				n.Parent.RemoveChild(n)
@@ -365,7 +364,7 @@ func parseTOC(doc *html.Node) *tableofcontents.Fragments {
 	f = func(n *html.Node, row, level int) {
 		if n.Type == html.ElementNode {
 			switch n.Data {
-			case "ul":
+			case "ul", "ol":
 				if level == 0 {
 					row++
 				}

@@ -8,7 +8,6 @@ params:
     aliases: [absLangURL]
     returnType: string
     signatures: [urls.AbsLangURL INPUT]
-aliases: [/functions/abslangurl]
 ---
 
 Use this function with both monolingual and multilingual configurations. The URL returned by this function depends on:
@@ -68,5 +67,5 @@ When rendering the `en` site with `baseURL = https://example.org/docs/`
 {{ absLangURL "/style.css" }} → https://example.org/en/style.css
 ```
 
-> [!note]
+> [!NOTE]
 > As illustrated by the previous example, using a leading slash is rarely desirable and can lead to unexpected outcomes. In nearly all cases, omit the leading slash.

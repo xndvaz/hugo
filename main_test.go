@@ -15,6 +15,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,18 +28,22 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/bep/helpers/envhelpers"
 	"github.com/gohugoio/hugo/commands"
+	"github.com/gohugoio/hugo/common/hugio"
 	"github.com/gohugoio/hugo/htesting"
+	"github.com/gohugoio/hugo/hugofs"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
 func TestCommands(t *testing.T) {
 	p := commonTestScriptsParam
 	p.Dir = "testscripts/commands"
+	// p.UpdateScripts = true
 	testscript.Run(t, p)
 }
 
@@ -59,7 +64,7 @@ func TestUnfinished(t *testing.T) {
 
 	p := commonTestScriptsParam
 	p.Dir = "testscripts/unfinished"
-	// p.UpdateScripts = true
+	//p.UpdateScripts = true
 	// p.TestWork = true
 
 	testscript.Run(t, p)
@@ -78,26 +83,26 @@ func TestMain(m *testing.M) {
 	})
 }
 
+var isCaseInsensitiveFs = sync.OnceValues(func() (bool, error) {
+	return htesting.IsCaseInsensitiveFs(os.TempDir())
+})
+
 var commonTestScriptsParam = testscript.Params{
 	Setup: func(env *testscript.Env) error {
 		return testSetupFunc()(env)
+	},
+	Condition: func(cond string) (bool, error) {
+		switch cond {
+		case "caseinsensitivefs":
+			return isCaseInsensitiveFs()
+		default:
+			return false, fmt.Errorf("unknown condition %q", cond)
+		}
 	},
 	Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 		// log prints to stderr.
 		"log": func(ts *testscript.TestScript, neg bool, args []string) {
 			log.Println(args)
-		},
-		// dostounix converts \r\n to \n.
-		"dostounix": func(ts *testscript.TestScript, neg bool, args []string) {
-			filename := ts.MkAbs(args[0])
-			b, err := os.ReadFile(filename)
-			if err != nil {
-				ts.Fatalf("%v", err)
-			}
-			b = bytes.Replace(b, []byte("\r\n"), []byte{'\n'}, -1)
-			if err := os.WriteFile(filename, b, 0o666); err != nil {
-				ts.Fatalf("%v", err)
-			}
 		},
 		// cat prints a file to stdout.
 		"cat": func(ts *testscript.TestScript, neg bool, args []string) {
@@ -146,6 +151,12 @@ var commonTestScriptsParam = testscript.Params{
 				return nil
 			})
 			if err != nil {
+				ts.Fatalf("%v", err)
+			}
+		},
+		// cpr copies a directory recursively to another location.
+		"cpr": func(ts *testscript.TestScript, neg bool, args []string) {
+			if err := hugio.CopyDir(hugofs.Os, ts.MkAbs(args[0]), ts.MkAbs(args[1]), nil); err != nil {
 				ts.Fatalf("%v", err)
 			}
 		},
@@ -249,6 +260,49 @@ var commonTestScriptsParam = testscript.Params{
 				ts.Fatalf("failed to write file: %v", err)
 			}
 		},
+		// ln creates a symlink, but throws an error on Windows.
+		"ln": func(ts *testscript.TestScript, neg bool, args []string) {
+			if runtime.GOOS == "windows" {
+				ts.Fatalf("ln is not supported on Windows")
+			}
+			if len(args) != 2 {
+				ts.Fatalf("usage: ln TARGET LINKNAME")
+			}
+			target := ts.MkAbs(args[0])
+			linkname := ts.MkAbs(args[1])
+			err := os.Symlink(target, linkname)
+			if err != nil {
+				ts.Fatalf("failed to create symlink: %v", err)
+			}
+		},
+		// base64decode decodes a base64-encoded file into a binary file.
+		"base64decode": func(ts *testscript.TestScript, neg bool, args []string) {
+			if len(args) != 2 {
+				ts.Fatalf("usage: base64decode src_base64_file dest_binary_file")
+			}
+
+			// Resolve paths relative to the test sandbox's current directory
+			src := ts.MkAbs(args[0])
+			dest := ts.MkAbs(args[1])
+
+			// Read the base64 text
+			base64Data, err := os.ReadFile(src)
+			if err != nil {
+				ts.Fatalf("failed to read base64 file: %v", err)
+			}
+
+			// Decode base64 back to raw bytes.
+			binaryBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(base64Data)))
+			if err != nil {
+				ts.Fatalf("failed to decode base64 data: %v", err)
+			}
+
+			// Write the binary file.
+			err = os.WriteFile(dest, binaryBytes, 0o644)
+			if err != nil {
+				ts.Fatalf("failed to write binary file: %v", err)
+			}
+		},
 
 		// httpget checks that a HTTP resource's body matches (if it compiles as a regexp) or contains all of the strings given as arguments.
 		"httpget": func(ts *testscript.TestScript, neg bool, args []string) {
@@ -325,6 +379,10 @@ var commonTestScriptsParam = testscript.Params{
 				ok := err == nil != neg
 				if !ok {
 					ts.Fatalf("stat %s: %v", filename, err)
+				}
+				if ok && neg {
+					// OK.
+					continue
 				}
 				if fi.Size() == 0 {
 					ts.Fatalf("%s is empty", filename)

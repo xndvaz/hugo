@@ -116,12 +116,12 @@ All. No CSS here.
 `
 	b := hugolib.TestRunning(t, files, hugolib.TestOptOsFs())
 
-	b.AssertFileContent("public/css/main.css", `.foo{background:green}@layer mylayer{.bar{background-image:url("./bar-Y35ORVQM.svg")}}`)
+	b.AssertFileContent("public/css/main.css", `.foo{background:green}@layer mylayer{.bar{background-image:url("/css/bar-Y35ORVQM.svg")}}`)
 
 	// Edit svg
 	b.EditFileReplaceAll("assets/images/bar.svg", "barsvg", "newbarsvg").Build()
 	b.AssertRenderCountPage(1)
-	b.AssertFileContent("public/css/main.css", `bar-LVHHRPN5.svg`) // new hash.
+	b.AssertFileContent("public/css/main.css", `/css/bar-LVHHRPN5.svg`) // new hash.
 	b.AssertFileContent("public/css/bar-LVHHRPN5.svg", "newbarsvg")
 
 	// Edit foo.css
@@ -132,7 +132,7 @@ All. No CSS here.
 	// Edit bar.css
 	b.EditFileReplaceAll("assets/css/bar.css", "bar.svg", "foo.svg").Build()
 	b.AssertRenderCountPage(1)
-	b.AssertFileContent("public/css/main.css", `foo-52JTT5GU.svg`)
+	b.AssertFileContent("public/css/main.css", `/css/foo-52JTT5GU.svg`)
 	b.AssertFileContent("public/css/foo-52JTT5GU.svg", "foosvg")
 
 	// Edit main.css
@@ -342,7 +342,7 @@ CSS: {{ .RelPermalink }}|{{ .Content }}
 	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	for _, lang := range []string{"en", "fr"} {
-		b.AssertFileContent("public/"+lang+"/css/main.css", `./pixel-NJRUOINY.png`)
+		b.AssertFileContent("public/"+lang+"/css/main.css", `/css/pixel-NJRUOINY.png`)
 		b.AssertFileExists("public/"+lang+"/css/pixel-NJRUOINY.png", true)
 	}
 }
@@ -372,10 +372,212 @@ div {
 `
 
 	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
-	b.AssertFileContent("public/css/main.css", `./pixel-NJRUOINY.png`)
+	b.AssertFileContent("public/css/main.css", `/css/pixel-NJRUOINY.png`)
 	b.AssertFileExists("public/css/pixel-NJRUOINY.png", true)
-	b.AssertFileContent("public/css/main.css", `url("./issue14619-NJRUOINY.png")`)
+	b.AssertFileContent("public/css/main.css", `url("/css/issue14619-NJRUOINY.png")`)
 	b.AssertFileExists("public/css/issue14619-NJRUOINY.png", true)
+}
+
+// Issue #14849
+func TestCSSBuildFileLoaderURLRelativeToWebContextRoot(t *testing.T) {
+	t.Parallel()
+
+	filesTemplate := `
+-- hugo.toml --
+BASEURL
+disableKinds = ['rss','section','sitemap','taxonomy','term']
+-- assets/css/main.css --
+@import "components/header.css";
+@import "/fonts/comic_neue/fonts.css";
+body { color: #222; }
+-- assets/css/components/header.css --
+header { border-bottom: 1px solid #222; }
+-- assets/fonts/comic_neue/fonts.css --
+@font-face {
+  font-family: 'Comic Neue';
+  src: url(ComicNeue-Regular.ttf) format('truetype');
+}
+-- assets/fonts/comic_neue/ComicNeue-Regular.ttf --
+fakefontdata
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ with . | css.Build (dict "minify" true) }}
+INLINE: <style>{{ .Content | safeCSS }}</style>
+LINKED: <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ end }}
+{{ end }}
+`
+
+	// Default baseURL: URLs in inlined CSS must be resolvable from any page,
+	// not just relative to the (non-existent) /css/main.css location.
+	files := strings.ReplaceAll(filesTemplate, "BASEURL", "")
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/index.html", `url("/css/ComicNeue-Regular-`)
+	b.AssertFileContent("public/css/main.css", `url("/css/ComicNeue-Regular-`)
+
+	// baseURL with a subpath: URLs must include that subpath.
+	files = strings.ReplaceAll(filesTemplate, "BASEURL", `baseURL = "https://example.org/mysite/"`)
+	b = hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/index.html", `url("/mysite/css/ComicNeue-Regular-`)
+	b.AssertFileContent("public/css/main.css", `url("/mysite/css/ComicNeue-Regular-`)
+}
+
+// Issue #14849
+func TestCSSBuildFileLoaderURLRelativeToWebContextRootMultihost(t *testing.T) {
+	t.Parallel()
+
+	// The CSS is built once for all hosts. The deepest base path among the
+	// hosts is baked into the file-loader URLs so the URL is reachable on every
+	// host, and the artifact is published at a per-host compensated path so the
+	// URL resolves correctly on each host. EN_WEIGHT/FR_WEIGHT swap which host
+	// renders first, to verify the result is independent of build order.
+	filesTemplate := `
+-- hugo.toml --
+defaultContentLanguage = "en"
+defaultContentLanguageInSubdir = false
+disableKinds = ['rss','section','sitemap','taxonomy','term']
+[languages]
+[languages.en]
+baseURL = "https://example.com/docs/"
+weight = EN_WEIGHT
+[languages.fr]
+baseURL = "https://example.fr/"
+weight = FR_WEIGHT
+-- assets/css/main.css --
+@import "/fonts/comic_neue/fonts.css";
+body { color: #222; }
+-- assets/fonts/comic_neue/fonts.css --
+@font-face {
+  font-family: 'Comic Neue';
+  src: url(ComicNeue-Regular.ttf) format('truetype');
+}
+-- assets/fonts/comic_neue/ComicNeue-Regular.ttf --
+fakefontdata
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ with . | css.Build (dict "minify" true) }}
+INLINE: <style>{{ .Content | safeCSS }}</style>
+LINKED: <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ range .Data.Artifacts }}ARTIFACT: {{ .RelPermalink }}|{{ .MediaType.Type }}
+{{ end }}
+{{ end }}
+{{ end }}
+`
+
+	assertResult := func(t *testing.T, b *hugolib.IntegrationTestBuilder) {
+		t.Helper()
+		b.Assert(b.H.Conf.IsMultihost(), qt.Equals, true)
+		b.AssertFileContent("public/en/index.html", `url("/docs/css/ComicNeue-Regular-`)
+		b.AssertFileContent("public/en/css/main.css", `url("/docs/css/ComicNeue-Regular-`)
+		b.AssertFileContent("public/fr/index.html", `url("/docs/css/ComicNeue-Regular-`)
+		b.AssertFileContent("public/fr/css/main.css", `url("/docs/css/ComicNeue-Regular-`)
+		b.AssertPublishDir("en/css/ComicNeue-Regular-UA4ODE7N.ttf")
+		b.AssertPublishDir("fr/docs/css/ComicNeue-Regular-UA4ODE7N.ttf")
+		// The artifact URL is the same on every host. See issue #15173.
+		b.AssertFileContent("public/en/index.html", "ARTIFACT: /docs/css/ComicNeue-Regular-UA4ODE7N.ttf|font/ttf")
+		b.AssertFileContent("public/fr/index.html", "ARTIFACT: /docs/css/ComicNeue-Regular-UA4ODE7N.ttf|font/ttf")
+	}
+
+	t.Run("en first", func(t *testing.T) {
+		t.Parallel()
+		files := strings.NewReplacer("EN_WEIGHT", "10", "FR_WEIGHT", "20").Replace(filesTemplate)
+		assertResult(t, hugolib.Test(t, files, hugolib.TestOptOsFs()))
+	})
+
+	t.Run("fr first", func(t *testing.T) {
+		t.Parallel()
+		files := strings.NewReplacer("EN_WEIGHT", "20", "FR_WEIGHT", "10").Replace(filesTemplate)
+		assertResult(t, hugolib.Test(t, files, hugolib.TestOptOsFs()))
+	})
+}
+
+// Issue #15173.
+func TestCSSBuildDataArtifacts(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+baseURL = "https://example.org/mysite/"
+disableKinds = ['page','rss','section','sitemap','taxonomy','term']
+-- assets/css/main.css --
+@import "/fonts/fonts.css";
+body { color: #222; }
+-- assets/fonts/fonts.css --
+@font-face {
+  font-family: 'Comic Neue';
+  src: url(ComicNeue-Regular.woff2) format('woff2'), url(ComicNeue-Regular.ttf) format('truetype');
+}
+-- assets/fonts/ComicNeue-Regular.ttf --
+fakefontdata
+-- assets/fonts/ComicNeue-Regular.woff2 --
+fakefontdata2
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ with . | css.Build (dict "minify" true "sourcemap" "external") }}
+{{ range .Data.Artifacts }}
+ARTIFACT: {{ .RelPermalink }}|{{ .Permalink }}|{{ .MediaType.Type }}
+{{ end }}
+{{ range .Data.Artifacts }}{{ if eq .MediaType.MainType "font" }}
+<link rel="preload" href="{{ .RelPermalink }}" as="font" type="{{ .MediaType.Type }}" crossorigin>
+{{ end }}{{ end }}
+<link rel="stylesheet" href="{{ .RelPermalink }}">
+{{ end }}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/index.html",
+		"ARTIFACT: /mysite/css/main.css.map|https://example.org/mysite/css/main.css.map|application/source-map",
+		".ttf|https://example.org/mysite/css/ComicNeue-Regular-",
+		".woff2|https://example.org/mysite/css/ComicNeue-Regular-",
+		"|font/ttf",
+		"|font/woff2",
+		`as="font" type="font/woff2" crossorigin`,
+	)
+	b.AssertFileExists("public/css/main.css.map", true)
+}
+
+func TestCSSBuildDataArtifactsAndThenFingerprint(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+baseURL = "https://example.org/mysite/"
+disableKinds = ['page','rss','section','sitemap','taxonomy','term']
+-- assets/css/main.css --
+@import "/fonts/fonts.css";
+body { color: #222; }
+-- assets/fonts/fonts.css --
+@font-face {
+  font-family: 'Comic Neue';
+  src: url(ComicNeue-Regular.woff2) format('woff2'), url(ComicNeue-Regular.ttf) format('truetype');
+}
+-- assets/fonts/ComicNeue-Regular.ttf --
+fakefontdata
+-- assets/fonts/ComicNeue-Regular.woff2 --
+fakefontdata2
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+ORIG CSS SHA256: {{ .Content | crypto.Hash "sha256" }}|
+{{ with . | css.Build (dict "minify" true) }}
+{{ range .Data.Artifacts }}
+ARTIFACT: {{ .RelPermalink }}|{{ .Permalink }}|{{ .MediaType.Type }}
+{{ end }}
+BUILT CSS SHA256: {{ .Content | crypto.Hash "sha256" }}|
+{{ with . | fingerprint }}
+FINGERPRINTED: {{ .RelPermalink }}|
+{{ end }}
+{{ end }}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/index.html",
+		"ARTIFACT: /mysite/css/ComicNeue-Regular-UA4ODE7N.ttf|",
+		"ORIG CSS SHA256: a2b878c05df0f346c3854caebd21f00bb0965b46628440b8ccb31ce675af6bfe|",
+		"BUILT CSS SHA256: 5f8757d5579386b8755e0df759c7eecfd069c385294dfe7bc3695862d7f218b1|",
+		"FINGERPRINTED: /mysite/css/main.5f8757d5579386b8755e0df759c7eecfd069c385294dfe7bc3695862d7f218b1.css|",
+	)
 }
 
 // Issue #14623
@@ -429,4 +631,375 @@ disableKinds = ["taxonomy", "term"]
 
 	b := hugolib.Test(t, files, hugolib.TestOptOsFs(), hugolib.TestOptWithNpmInstall())
 	b.AssertFileContent("public/css/main.css", `--bs-indigo: #6610f2;`)
+}
+
+func TestCSSBuildVars(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- assets/css/main.css --
+@import "hugo:vars";
+
+body {
+  background-color: var(--primary-color);
+  font-size: var(--font-size);
+  color: var(--text-color);
+}
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ $opts := dict
+  "vars" (dict "primary-color" "blue" "font-size" "24px" "text-color" "#333" "--already-prefixed" "red")
+}}
+{{ with . | css.Build $opts }}
+ <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ end }}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/css/main.css",
+		"--primary-color: blue;",
+		"--font-size: 24px;",
+		"--text-color: #333;",
+		"--already-prefixed: red;",
+		"background-color: var(--primary-color)",
+	)
+}
+
+func TestCSSBuildVarsNestedIssue14705(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- assets/css/main.css --
+@import "hugo:vars";
+@import "hugo:vars/mobile" (max-width: 650px);
+
+body {
+  background-color: var(--primary-color);
+}
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ $opts := dict
+  "vars" (dict "primary-color" "blue" "mobile" (dict "primary-color" "red" "font-size" "12px"))
+}}
+{{ with . | css.Build $opts }}
+ <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ end }}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/css/main.css",
+		"--primary-color: blue;",
+		"@media (max-width: 650px)",
+		"--primary-color: red;",
+		"! --mobile:",
+		"--font-size: 12px;",
+		"background-color: var(--primary-color)",
+	)
+}
+
+func TestCSSBuildVarsEmpty(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- assets/css/main.css --
+@import "hugo:vars";
+
+body {
+  background-color: red;
+}
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ with . | css.Build }}
+ <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ end }}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/css/main.css", "background-color: red;")
+}
+
+func TestCSSBuildVarsNestedUpperCase(t *testing.T) {
+	t.Parallel()
+
+	filesTemplate := `
+-- hugo.toml --
+-- assets/css/main.css --
+@import "hugo:vars";
+@import "hugo:vars/MOBILE1" (max-width: 650px);
+
+body {
+  background-color: var(--primary-color);
+}
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ $opts := dict
+  "vars" (dict "primary-color" "blue" "MOBILE2" (dict "primary-color" "red" "font-size" "12px" "MixedCaseKey" "value"))
+}}
+{{ with . | css.Build $opts }}
+ <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ end }}
+{{ end }}
+`
+
+	files := strings.ReplaceAll(filesTemplate, "MOBILE1", "Mobile")
+	files = strings.ReplaceAll(files, "MOBILE2", "mobile")
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/css/main.css", "primary-color: red;")
+
+	files = strings.ReplaceAll(filesTemplate, "MOBILE1", "mobile")
+	files = strings.ReplaceAll(files, "MOBILE2", "MobilE")
+	b = hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/css/main.css", "primary-color: red;")
+}
+
+func TestCSSBuildVarsQuoted(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- assets/css/main.css --
+@import "hugo:vars";
+
+body {
+  font-family: var(--font-family);
+  color: var(--brand-color);
+}
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ $opts := dict
+  "vars" (dict "font-family" (css.Quoted "Arial, sans-serif") "brand-color" "hsl(0, 0%, 20%)")
+}}
+{{ with . | css.Build $opts }}
+ <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ end }}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/css/main.css",
+		`--font-family: "Arial, sans-serif";`,
+		"--brand-color: hsl(0, 0%, 20%);",
+	)
+}
+
+func TestCSSBuildVarsFromParams(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+[params.styles]
+primary-color = "blue"
+font-size = "24px"
+text-color = "#333"
+-- assets/css/main.css --
+@import "hugo:vars";
+-- assets/css/main.css --
+@import "hugo:vars";
+
+body {
+  background-color: var(--primary-color);
+  font-size: var(--font-size);
+  color: var(--text-color);
+}
+-- layouts/home.html --
+{{ with resources.Get "css/main.css" }}
+{{ $opts := dict
+  "vars" site.Params.styles
+}}
+{{ with . | css.Build $opts }}
+ <link rel="stylesheet" href="{{ .RelPermalink }}" />
+{{ end }}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+	b.AssertFileContent("public/css/main.css",
+		"--primary-color: blue;",
+		"--font-size: 24px;",
+		"--text-color: #333;",
+	)
+}
+
+func TestCSSBuildImportContext(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- assets/foo.css --
+body { color: orange; }
+-- assets/css/main.css --
+@import "foo.css" screen;
+@import "bar.css" print;
+p {
+  font-color: red;
+}
+-- layouts/home.html --
+{{ $foo := resources.FromString "foo.css" "body { color: blue; }" }}
+{{ $bar := resources.FromString "bar.css" "body { color: green; }" }}
+{{/* resource.Resources implements the resources.ResourceGetter interface (the type of importContext). */}}
+{{ $resources := slice  $foo $bar}}
+{{ $opts := dict "minify" true "importContext" $resources }}
+{{ $css := resources.Get "css/main.css" | css.Build $opts }}
+CSS: {{ $css.RelPermalink }}|
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+
+	b.AssertFileContent("public/css/main.css", `@media screen{body{color:#00f}}@media print{body{color:green}}p{font-color:red}`)
+}
+
+func TestCSSBuildImportContextChromaStyles(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+disableKinds = ["taxonomy", "term", "rss", "sitemap", "section", "page"]
+[markup.highlight]
+style = "monokai"
+-- assets/css/components/all.css --
+@import "./chroma-light.css";
+@import "./chroma-dark.css" (prefers-color-scheme: dark);
+-- assets/css/main.css --
+@import "./components/all.css";
+
+:root {
+  color-scheme: light dark;
+}
+
+-- layouts/home.html --
+{{ $light := css.ChromaStyles (dict "targetPath" "css/components/chroma-light.css" "style" "github" "mode" "light") }}
+{{ $dark := css.ChromaStyles (dict "targetPath" "css/components/chroma-dark.css" "style" "github" "mode" "dark") }}
+{{ $opts := dict "minify" true "importContext" (slice $light $dark) }}
+{{ $css := resources.Get "css/main.css" | css.Build $opts }}
+CSS: {{ $css.RelPermalink }}|
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+
+	b.AssertFileContent("public/index.html", "CSS: /css/main.css|")
+	b.AssertFileContent("public/css/main.css", ".bg{background-color:#f7f7f7}.chroma", "@media(prefers-color-scheme:dark){.bg{color:#e6edf3")
+}
+
+func TestCSSBuildImportContextHashes(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- assets/foo.css --
+body { color: orange; }
+-- assets/css/main.css --
+@import "foo.css" screen;
+@import "bar.css" print;
+p {
+  font-color: red;
+}
+-- layouts/home.html --
+{{ $foo := resources.FromString "foo.css" "body { color: blue; }" }}|
+{{ $foo2 := resources.FromString "foo2.css" "body { color: blue; }" }}|
+{{ $foo3 := resources.FromString "foo.css" "body { color: indigo; }" }}|
+{{ $bar := resources.FromString "bar.css" "body { color: green; }" }}|
+{{ $resources := slice $foo $bar}}
+{{ $resourcesMount1 := $resources.Mount "a" "b"}}
+{{ $resourcesMount2 := $resources.Mount "a" "c"}}
+{{ $opts := dict "minify" true "importContext" $resources }}
+foo: {{ $foo | testinginternal.HashString }}|
+foo2: {{ $foo2 | testinginternal.HashString }}|
+foo3: {{ $foo3 | testinginternal.HashString }}|
+bar: {{ $bar | testinginternal.HashString }}|
+resources: {{ $resources | testinginternal.HashString }}|
+resourcesMount1: {{ $resourcesMount1 | testinginternal.HashString }}|
+resourcesMount2: {{ $resourcesMount2 | testinginternal.HashString }}|
+resources namespace: {{ resources | testinginternal.HashString }}|
+opts: {{ $opts | testinginternal.HashString }}|
+home: {{ . | testinginternal.HashString }}|{{ .Key }}|
+slice with Page: {{ slice $foo $bar . | testinginternal.HashString }}|
+map with Page: {{ dict "foo" $foo "bar" $bar "page" . | testinginternal.HashString }}|
+{{ $css := resources.Get "css/main.css" | css.Build $opts -}}
+css: {{ $css | testinginternal.HashString }}|
+cached1: {{ testinginternal.NewCachedResourceGetter $resources resources | testinginternal.HashString}}
+cached2: {{ testinginternal.NewCachedResourceGetter $resources | testinginternal.HashString}}
+cached3: {{ testinginternal.NewCachedResourceGetter $resources resources $resourcesMount1 $resourcesMount2 | testinginternal.HashString}}
+
+
+`
+
+	for range 2 {
+
+		b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+
+		b.AssertFileContent("public/index.html", `
+foo: 17610550322594361312|
+foo2: 12741631597870435822|
+foo3: 4488319114298108946|
+bar: 11981658863051989001|
+resources: 10963320145636139629|
+resourcesMount1: 7843365040860281860|
+resourcesMount2: 10632811173795339581|
+resources namespace: 12714111578321948564|
+opts: 7538269917289793785|
+css: 8075855322897706813|
+home: 166103792234269065|/html|
+slice with Page: 7769684332502419906|
+map with Page: 10393165700333352395|
+cached1: 7064840587060576200
+cached2: 6730658186132701788
+cached3: 13761938017162285970
+`)
+
+	}
+}
+
+func TestCSSBuildImportContextEdit(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+disableLiveReload = true
+-- assets/css/common/baz.css --
+body { color: purple; }
+-- assets/css/main.css --
+@import "foo.css" screen;
+@import "bar.css" print;
+@import "baz.css" screen and (min-width: 768px);
+p {
+  font-color: red;
+}
+-- layouts/home.html --
+{{ $foo := resources.FromString "foo.css" "body { color: blue; }" }}
+{{ $bar := resources.FromString "bar.css" "body { color: green; }" }}
+{{ $common := resources.Match "/css/common/*.css" }}
+{{ $commonMount := ($common.Mount "/css/common" ".")}}
+{{ $resources := slice $foo $bar }}
+{{ $opts := dict "minify" true "importContext" (slice $resources $commonMount) }}
+resources: {{ $resources | testinginternal.HashString }}|
+{{ $css := resources.Get "css/main.css" | css.Build $opts }}
+CSS: {{ $css.RelPermalink }}|
+`
+
+	b := hugolib.TestRunning(t, files, hugolib.TestOptOsFs())
+
+	b.AssertFileContent("public/css/main.css", `
+@media screen{body{color:#00f}}@media print{body{color:green}}
+@media screen and (min-width:768px){body{color:purple}}
+`)
+
+	// Edit resource built with resources.FromString.
+	b.EditFileReplaceAll("layouts/home.html", "color: green", "color: yellow").Build()
+	b.AssertFileContent("public/css/main.css", `
+@media screen{body{color:#00f}}@media print{body{color:#ff0}}
+@media screen and (min-width:768px){body{color:purple}}
+`)
+
+	// Edit resource in the mounted slice.
+	b.EditFileReplaceAll("assets/css/common/baz.css", "purple", "orange").Build()
+	b.AssertFileContent("public/css/main.css", `
+@media screen{body{color:#00f}}@media print{body{color:#ff0}}
+@media screen and (min-width:768px){body{color:orange}}
+`)
 }

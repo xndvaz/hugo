@@ -29,6 +29,9 @@ chroma:
     - alloy
     Name: Alloy
   - Aliases:
+    - ampl
+    Name: AMPL
+  - Aliases:
     - ng2
     Name: Angular2
   - Aliases:
@@ -54,6 +57,10 @@ chroma:
   - Aliases:
     - armasm
     Name: ArmAsm
+  - Aliases:
+    - arturo
+    - art
+    Name: Arturo
   - Aliases:
     - atl
     Name: ATL
@@ -270,6 +277,12 @@ chroma:
     - emacs-lisp
     Name: EmacsLisp
   - Aliases:
+    - erb
+    - html+erb
+    - html+ruby
+    - rhtml
+    Name: ERB
+  - Aliases:
     - erlang
     Name: Erlang
   - Aliases:
@@ -309,6 +322,10 @@ chroma:
     - gd3
     Name: GDScript3
   - Aliases:
+    - gemfile-lock
+    - gemfilelock
+    Name: Gemfile.lock
+  - Aliases:
     - gemtext
     - gmi
     - gmni
@@ -327,6 +344,10 @@ chroma:
   - Aliases:
     - genshitext
     Name: Genshi Text
+  - Aliases:
+    - pot
+    - po
+    Name: Gettext
   - Aliases:
     - cucumber
     - Cucumber
@@ -442,6 +463,7 @@ chroma:
     Name: JavaScript
   - Aliases:
     - json
+    - jsonl
     Name: JSON
   - Aliases:
     - jsonata
@@ -469,6 +491,10 @@ chroma:
     - kotlin
     Name: Kotlin
   - Aliases:
+    - lateralus
+    - ltl
+    Name: Lateralus
+  - Aliases:
     - lean4
     - lean
     Name: Lean4
@@ -477,14 +503,19 @@ chroma:
     - lighttpd
     Name: Lighttpd configuration file
   - Aliases:
+    - lilypond
+    Name: LilyPond
+  - Aliases:
     - llvm
     Name: LLVM
   - Aliases: null
     Name: lox
   - Aliases:
     - lua
-    - luau
     Name: Lua
+  - Aliases:
+    - luau
+    Name: Luau
   - Aliases:
     - make
     - makefile
@@ -819,6 +850,9 @@ chroma:
     - scala
     Name: Scala
   - Aliases:
+    - scdoc
+    Name: scdoc
+  - Aliases:
     - scheme
     - scm
     Name: Scheme
@@ -860,6 +894,9 @@ chroma:
   - Aliases:
     - sp
     Name: SourcePawn
+  - Aliases:
+    - spade
+    Name: Spade
   - Aliases:
     - sparql
     Name: SPARQL
@@ -909,6 +946,9 @@ chroma:
     - tcsh
     - csh
     Name: Tcsh
+  - Aliases:
+    - templ
+    Name: Templ
   - Aliases:
     - termcap
     Name: Termcap
@@ -1026,6 +1066,12 @@ chroma:
     - yaml
     Name: YAML
   - Aliases:
+    - yaml+jinja
+    - salt
+    - sls
+    - ansible
+    Name: YAML+Jinja
+  - Aliases:
     - yang
     Name: YANG
   - Aliases:
@@ -1038,76 +1084,228 @@ chroma:
     - zig
     Name: Zig
   styles:
-  - RPGLE
-  - abap
-  - algol
-  - algol_nu
-  - arduino
-  - ashen
-  - aura-theme-dark
-  - aura-theme-dark-soft
-  - autumn
-  - average
-  - base16-snazzy
-  - borland
-  - bw
-  - catppuccin-frappe
-  - catppuccin-latte
-  - catppuccin-macchiato
-  - catppuccin-mocha
-  - colorful
-  - doom-one
-  - doom-one2
-  - dracula
-  - emacs
-  - evergarden
-  - friendly
-  - fruity
-  - github
-  - github-dark
-  - gruvbox
-  - gruvbox-light
-  - hr_high_contrast
-  - hrdark
-  - igor
-  - lovelace
-  - manni
-  - modus-operandi
-  - modus-vivendi
-  - monokai
-  - monokailight
-  - murphy
-  - native
-  - nord
-  - nordic
-  - onedark
-  - onesenterprise
-  - paraiso-dark
-  - paraiso-light
-  - pastie
-  - perldoc
-  - pygments
-  - rainbow_dash
-  - rose-pine
-  - rose-pine-dawn
-  - rose-pine-moon
-  - rrt
-  - solarized-dark
-  - solarized-dark256
-  - solarized-light
-  - swapoff
-  - tango
-  - tokyonight-day
-  - tokyonight-moon
-  - tokyonight-night
-  - tokyonight-storm
-  - trac
-  - vim
-  - vs
-  - vulcan
-  - witchhazel
-  - xcode
-  - xcode-dark
+  - counterpart: ''
+    mode: light
+    name: abap
+  - counterpart: ''
+    mode: light
+    name: algol
+  - counterpart: ''
+    mode: light
+    name: algol_nu
+  - counterpart: ''
+    mode: light
+    name: arduino
+  - counterpart: ''
+    mode: dark
+    name: ashen
+  - counterpart: ''
+    mode: dark
+    name: aura-theme-dark
+  - counterpart: ''
+    mode: dark
+    name: aura-theme-dark-soft
+  - counterpart: ''
+    mode: light
+    name: autumn
+  - counterpart: ''
+    mode: dark
+    name: average
+  - counterpart: ''
+    mode: dark
+    name: base16-snazzy
+  - counterpart: ''
+    mode: light
+    name: borland
+  - counterpart: ''
+    mode: light
+    name: bw
+  - counterpart: ''
+    mode: dark
+    name: catppuccin-frappe
+  - counterpart: catppuccin-mocha
+    mode: light
+    name: catppuccin-latte
+  - counterpart: ''
+    mode: dark
+    name: catppuccin-macchiato
+  - counterpart: catppuccin-latte
+    mode: dark
+    name: catppuccin-mocha
+  - counterpart: ''
+    mode: light
+    name: colorful
+  - counterpart: ''
+    mode: dark
+    name: darcula
+  - counterpart: ''
+    mode: dark
+    name: doom-one
+  - counterpart: ''
+    mode: dark
+    name: doom-one2
+  - counterpart: ''
+    mode: dark
+    name: dracula
+  - counterpart: ''
+    mode: light
+    name: emacs
+  - counterpart: ''
+    mode: dark
+    name: evergarden
+  - counterpart: ''
+    mode: light
+    name: friendly
+  - counterpart: ''
+    mode: dark
+    name: fruity
+  - counterpart: github-dark
+    mode: light
+    name: github
+  - counterpart: github
+    mode: dark
+    name: github-dark
+  - counterpart: gruvbox-light
+    mode: dark
+    name: gruvbox
+  - counterpart: gruvbox
+    mode: light
+    name: gruvbox-light
+  - counterpart: ''
+    mode: light
+    name: hr_high_contrast
+  - counterpart: ''
+    mode: light
+    name: hrdark
+  - counterpart: ''
+    mode: light
+    name: igor
+  - counterpart: ''
+    mode: dark
+    name: kanagawa-dragon
+  - counterpart: kanagawa-wave
+    mode: light
+    name: kanagawa-lotus
+  - counterpart: kanagawa-lotus
+    mode: dark
+    name: kanagawa-wave
+  - counterpart: ''
+    mode: light
+    name: lovelace
+  - counterpart: ''
+    mode: light
+    name: manni
+  - counterpart: modus-vivendi
+    mode: light
+    name: modus-operandi
+  - counterpart: modus-operandi
+    mode: dark
+    name: modus-vivendi
+  - counterpart: monokailight
+    mode: dark
+    name: monokai
+  - counterpart: monokai
+    mode: light
+    name: monokailight
+  - counterpart: ''
+    mode: light
+    name: murphy
+  - counterpart: ''
+    mode: dark
+    name: native
+  - counterpart: ''
+    mode: dark
+    name: nord
+  - counterpart: ''
+    mode: dark
+    name: nordic
+  - counterpart: ''
+    mode: dark
+    name: onedark
+  - counterpart: ''
+    mode: light
+    name: onesenterprise
+  - counterpart: paraiso-light
+    mode: dark
+    name: paraiso-dark
+  - counterpart: paraiso-dark
+    mode: light
+    name: paraiso-light
+  - counterpart: ''
+    mode: light
+    name: pastie
+  - counterpart: ''
+    mode: light
+    name: perldoc
+  - counterpart: ''
+    mode: light
+    name: pygments
+  - counterpart: ''
+    mode: light
+    name: rainbow_dash
+  - counterpart: rose-pine-dawn
+    mode: dark
+    name: rose-pine
+  - counterpart: rose-pine
+    mode: light
+    name: rose-pine-dawn
+  - counterpart: ''
+    mode: dark
+    name: rose-pine-moon
+  - counterpart: ''
+    mode: light
+    name: rpgle
+  - counterpart: ''
+    mode: dark
+    name: rrt
+  - counterpart: solarized-light
+    mode: dark
+    name: solarized-dark
+  - counterpart: ''
+    mode: dark
+    name: solarized-dark256
+  - counterpart: solarized-dark
+    mode: light
+    name: solarized-light
+  - counterpart: ''
+    mode: dark
+    name: swapoff
+  - counterpart: ''
+    mode: light
+    name: tango
+  - counterpart: tokyonight-night
+    mode: light
+    name: tokyonight-day
+  - counterpart: ''
+    mode: dark
+    name: tokyonight-moon
+  - counterpart: tokyonight-day
+    mode: dark
+    name: tokyonight-night
+  - counterpart: ''
+    mode: dark
+    name: tokyonight-storm
+  - counterpart: ''
+    mode: light
+    name: trac
+  - counterpart: ''
+    mode: dark
+    name: vim
+  - counterpart: ''
+    mode: light
+    name: vs
+  - counterpart: ''
+    mode: dark
+    name: vulcan
+  - counterpart: ''
+    mode: dark
+    name: witchhazel
+  - counterpart: xcode-dark
+    mode: light
+    name: xcode
+  - counterpart: xcode
+    mode: dark
+    name: xcode-dark
 config:
   HTTPCache:
     cache:
@@ -1128,7 +1326,7 @@ config:
   archeTypeDir: archetypes
   assetDir: assets
   author: {}
-  baseURL: ''
+  baseURL: https://example.org/
   build:
     buildStats:
       disableClasses: false
@@ -1136,8 +1334,14 @@ config:
       disableTags: false
       enable: false
     cacheBusters:
-    - source: '(postcss|tailwind)\.config\.js'
+    - source: '(postcss|tailwind)\.config\.(js|mjs|cjs)'
       target: (css|styles|scss|sass)
+    cleanDestinationDir:
+      enable: false
+      keepDirs:
+      - '{**/,}.*'
+      keepFiles:
+      - '{**/,}.{git,gitignore,gitattributes}'
     noJSConfigInAssets: false
     useResourceCacheWhen: fallback
   buildDrafts: false
@@ -1169,7 +1373,6 @@ config:
   canonifyURLs: false
   capitalizeListTitles: true
   cascade: null
-  cleanDestinationDir: false
   contentDir: content
   contentTypes:
     text/asciidoc: {}
@@ -1243,24 +1446,31 @@ config:
   ignoreVendorPaths: ''
   imaging:
     anchor: smart
+    avif:
+      compression: lossy
+      encoderSpeed: 10
+      hint: photo
+      quality: 60
     bgColor: ffffff
-    compression: lossy
     exif:
       disableDate: false
       disableLatLong: false
       excludeFields: GPS|Exif|Exposure[M|P|B]|Contrast|Resolution|Sharp|JPEG|Metering|Sensing|Saturation|ColorSpace|Flash|WhiteBalance
       includeFields: ''
+    jpeg:
+      quality: 75
     meta:
       fields:
       - '! *{GPS,Exif,Exposure[MPB],Contrast,Resolution,Sharp,JPEG,Metering,Sensing,Saturation,ColorSpace,Flash,WhiteBalance}*'
       sources:
       - exif
       - iptc
-    quality: 75
     resampleFilter: box
     webp:
+      compression: lossy
       hint: photo
       method: 2
+      quality: 75
       useSharpYuv: false
   languages:
     en:
@@ -1366,6 +1576,8 @@ config:
       style: monokai
       tabWidth: 4
       wrapperClass: highlight
+    rst:
+      syntaxHighlight: long
     tableOfContents:
       endLevel: 3
       ordered: false
@@ -1390,6 +1602,10 @@ config:
       suffixes:
       - xml
       - rss
+    application/source-map:
+      delimiter: .
+      suffixes:
+      - map
     application/toml:
       delimiter: .
       suffixes:
@@ -1415,6 +1631,14 @@ config:
       delimiter: .
       suffixes:
       - ttf
+    font/woff:
+      delimiter: .
+      suffixes:
+      - woff
+    font/woff2:
+      delimiter: .
+      suffixes:
+      - woff2
     image/avif:
       delimiter: .
       suffixes:
@@ -1597,6 +1821,9 @@ config:
         precision: 0
       svg:
         keepComments: false
+        keepNamespaces:
+        - ''
+        - x-bind
         precision: 0
       xml:
         keepWhitespace: false
@@ -1948,11 +2175,7 @@ config:
     path: page
   panicOnWarning: false
   params: {}
-  permalinks:
-    page: {}
-    section: {}
-    taxonomy: {}
-    term: {}
+  permalinks: null
   pluralizeListTitles: true
   printI18nWarnings: false
   printPathWarnings: false
@@ -1985,23 +2208,29 @@ config:
     indices:
     - applyFilter: false
       cardinalityThreshold: 0
+      minTokenLength: 0
       name: keywords
       pattern: ''
       toLower: false
+      tokenize: false
       type: basic
       weight: 100
     - applyFilter: false
       cardinalityThreshold: 0
+      minTokenLength: 0
       name: date
       pattern: ''
       toLower: false
+      tokenize: false
       type: basic
       weight: 10
     - applyFilter: false
       cardinalityThreshold: 0
+      minTokenLength: 0
       name: tags
       pattern: ''
       toLower: false
+      tokenize: false
       type: basic
       weight: 80
     threshold: 80
@@ -2015,15 +2244,17 @@ config:
       weight: 0
   sectionPagesMenu: ''
   security:
+    allowContent:
+    - '! ^text/html$'
+    - '! ^text/org$'
     enableInlineShortcodes: false
     exec:
       allow:
-      - ^(dart-)?sass(-embedded)?$
+      - ^(dart-)?sass$
       - ^go$
       - ^git$
-      - ^npx$
+      - ^node$
       - ^postcss$
-      - ^tailwindcss$
       osEnv:
       - '(?i)^((HTTPS?|NO)_PROXY|PATH(EXT)?|APPDATA|TE?MP|TERM|GO\w+|(XDG_CONFIG_)?HOME|USERPROFILE|SSH_AUTH_SOCK|DISPLAY|LANG|SYSTEMDRIVE|PROGRAMDATA)$'
     funcs:
@@ -2034,8 +2265,24 @@ config:
       mediaTypes: null
       methods:
       - (?i)GET|POST
+      proxyFromEnvironment: false
       urls:
-      - .*
+      - (?i)^https?://[a-z0-9]
+      - '! (?i)^https?://\d+\.'
+      - '! (?i)localhost'
+      - '! (?i)^https?://[^/?#]*@'
+    node:
+      permissions:
+        allowAddons:
+        - tailwindcss
+        allowChildProcess:
+        - tailwindcss
+        allowRead:
+        - .
+        allowWorker:
+        - tailwindcss
+        allowWrite: []
+        disable: false
   segments: {}
   server:
     headers: null
@@ -2530,7 +2777,9 @@ tpl:
         Args:
         - first
         - others
-        Description: Eq returns the boolean truth of arg1 == arg2 || arg1 == arg3 || arg1 == arg4.
+        Description: |-
+          Eq returns the boolean truth of arg1 == arg2 || arg1 == arg3 || arg1 == arg4.
+          Numbers are compared by value regardless of type, so e.g. 1 and 1.0 are considered equal.
         Examples:
         - - '{{ if eq .Section "blog" }}current-section{{ end }}'
           - current-section
@@ -2600,6 +2849,26 @@ tpl:
         Examples:
         - - '{{ hmac "sha256" "Secret key" "Hello world, gophers!" }}'
           - b6d11b6c53830b9d87036272ca9fe9d19306b8f9d8aa07b15da27d89e6e34f40
+      Hash:
+        Aliases: null
+        Args:
+        - args
+        Description: |-
+          Hash returns the hex-encoded checksum of v using the given algorithm; one of
+          md5, sha1, sha256 (the default), sha384 or sha512.
+          
+          The supported algorithms match those used for the Subresource Integrity (SRI)
+          hash in .Data.Integrity on fingerprinted resources, so an SRI hash can be
+          constructed by combining this with encoding.HexDecode and encoding.Base64Encode.
+        Examples:
+        - - '{{ crypto.Hash "sha256" "Hello world, gophers!" }}'
+          - 6ec43b78da9669f50e4e422575c54bf87536954ccd58280219c393f2ce352b46
+        - - '{{ "Hello world" | crypto.Hash "sha256" }}'
+          - 64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c
+        - - '{{ "Hello world" | crypto.Hash }}'
+          - 64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c
+        - - '{{ "Hello world" | crypto.Hash "sha512" }}'
+          - b7f783baed8297f0db917462184ff4f08e69c2d5e5f79a942600f9725f58ce1f29c18139bf80b06c0fff2bdd34738452ecf40c488c22a7e3d80cdf6f9c1c0d47
       MD5:
         Aliases:
         - md5
@@ -2630,6 +2899,24 @@ tpl:
         - - '{{ sha256 "Hello world, gophers!" }}'
           - 6ec43b78da9669f50e4e422575c54bf87536954ccd58280219c393f2ce352b46
     css:
+      Build:
+        Aliases: null
+        Args:
+        - args
+        Description: |-
+          Build processes the given CSS Resource with ESBuild.
+          Note that this method is identical to the one in the js Namespace.
+        Examples: []
+      ChromaStyles:
+        Aliases: null
+        Args:
+        - opts
+        Description: |-
+          ChromaStyles generates a CSS stylesheet for the Chroma code highlighter
+          and returns it as a Resource. This stylesheet is needed if
+          markup.highlight.noClasses is disabled in config.
+          The style defaults to the markup.highlight.style config setting.
+        Examples: []
       PostCSS:
         Aliases:
         - postCSS
@@ -2741,6 +3028,22 @@ tpl:
         Examples:
         - - '{{ "Hello world" | base64Encode }}'
           - SGVsbG8gd29ybGQ=
+      HexDecode:
+        Aliases: null
+        Args:
+        - content
+        Description: HexDecode returns the hex decoding of the given content.
+        Examples:
+        - - '{{ "48656c6c6f20776f726c64" | encoding.HexDecode }}'
+          - Hello world
+      HexEncode:
+        Aliases: null
+        Args:
+        - content
+        Description: HexEncode returns the hex encoding of the given content.
+        Examples:
+        - - '{{ "Hello world" | encoding.HexEncode }}'
+          - 48656c6c6f20776f726c64
       Jsonify:
         Aliases:
         - jsonify
@@ -2889,6 +3192,11 @@ tpl:
         Args: null
         Description: ''
         Examples: null
+      ForEeachIdentityByName:
+        Aliases: null
+        Args: null
+        Description: ''
+        Examples: null
       Generator:
         Aliases: null
         Args: null
@@ -2900,11 +3208,6 @@ tpl:
         Description: ''
         Examples: null
       IsExtended:
-        Aliases: null
-        Args: null
-        Description: ''
-        Examples: null
-      IsMultiHost:
         Aliases: null
         Args: null
         Description: ''
@@ -3143,7 +3446,7 @@ tpl:
         Aliases: null
         Args:
         - args
-        Description: Build processes the given Resource with ESBuild.
+        Description: Build processes the given JavaScript Resource with ESBuild.
         Examples: []
     lang:
       FormatAccounting:
@@ -3767,6 +4070,11 @@ tpl:
         - args
         Description: 'GetRemote gets the URL (via HTTP(s)) in the first argument in args and creates Resource object that can be used for\nfurther transformations.\n\nA second argument may be provided with an option map.\n\nNote: This method does not return any error as a second return value,\nfor any error situations the error can be checked in .Err.'
         Examples: []
+      Key:
+        Aliases: null
+        Args: null
+        Description: ''
+        Examples: null
       Match:
         Aliases: null
         Args:
@@ -3802,7 +4110,13 @@ tpl:
         Aliases: null
         Args:
         - r
-        Description: PostProcess processes r after the build.
+        Description: 'PostProcess processes r after the build.\n\nDeprecated: Use templates.Defer instead.'
+        Examples: []
+      Publish:
+        Aliases: null
+        Args:
+        - r
+        Description: Publish publishes r to the destination and returns it.
         Examples: []
     safe:
       CSS:
@@ -4139,11 +4453,19 @@ tpl:
         Examples:
         - - '{{ findRESubmatch `<a\s*href="(.+?)">(.+?)</a>` `<li><a href="#foo">Foo</a></li> <li><a href="#bar">Bar</a></li>` | print | safeHTML }}'
           - '[[<a href="#foo">Foo</a> #foo Foo] [<a href="#bar">Bar</a> #bar Bar]]'
+      FirstLower:
+        Aliases: null
+        Args:
+        - s
+        Description: FirstLower returns s with the first Unicode letter mapped to lowercase.
+        Examples:
+        - - '{{ "Hugo rocks!" | strings.FirstLower }}'
+          - hugo rocks!
       FirstUpper:
         Aliases: null
         Args:
         - s
-        Description: FirstUpper converts s making  the first character upper case.
+        Description: FirstUpper returns s with the first Unicode letter mapped to uppercase.
         Examples:
         - - '{{ "hugo rocks!" | strings.FirstUpper }}'
           - Hugo rocks!
@@ -4197,6 +4519,19 @@ tpl:
           - Batman and Catwoman
         - - '{{ replace "aabbaabb" "a" "z" 2 }}'
           - zzbbaabb
+      ReplacePairs:
+        Aliases: null
+        Args:
+        - args
+        Description: |-
+          ReplacePairs returns a copy of a string with multiple replacements performed
+          in a single pass. The last argument is the source string. Preceding arguments
+          are old/new string pairs, either as a slice or as individual arguments.
+        Examples:
+        - - '{{ "aab" | strings.ReplacePairs "a" "b" "b" "c" }}'
+          - bbc
+        - - '{{ "aab" | strings.ReplacePairs (slice "a" "b" "b" "c") }}'
+          - bbc
       ReplaceRE:
         Aliases:
         - replaceRE
@@ -4273,9 +4608,7 @@ tpl:
         - lower
         Args:
         - s
-        Description: |-
-          ToLower returns a copy of the input s with all Unicode letters mapped to their
-          lower case.
+        Description: ToLower returns s with all Unicode letters mapped to lowercase.
         Examples:
         - - '{{ lower "BatMan" }}'
           - batman
@@ -4284,9 +4617,7 @@ tpl:
         - upper
         Args:
         - s
-        Description: |-
-          ToUpper returns a copy of the input s with all Unicode letters mapped to their
-          upper case.
+        Description: ToUpper returns s with all Unicode letters mapped to uppercase.
         Examples:
         - - '{{ upper "BatMan" }}'
           - BATMAN
@@ -4380,6 +4711,7 @@ tpl:
       Defer:
         Aliases: null
         Args:
+        - ctx
         - args
         Description: Defer defers the execution of a template block.
         Examples: []
@@ -4417,6 +4749,17 @@ tpl:
           Inner executes the inner content of a partial decorator.
           Note that there is only one inner block per partial decorator, but inner may be called multiple times with, typically, different data.
         Examples: []
+    testinginternal:
+      HashString:
+        Aliases: null
+        Args: null
+        Description: ''
+        Examples: null
+      NewCachedResourceGetter:
+        Aliases: null
+        Args: null
+        Description: ''
+        Examples: null
     time:
       AsTime:
         Aliases: null
@@ -4542,11 +4885,15 @@ tpl:
         - highlight
         Args:
         - s
-        - lang
-        - opts
+        - args
         Description: |-
-          Highlight returns a copy of s as an HTML string with syntax
+          Highlight returns a copy of CODE as an HTML string with syntax
           highlighting applied.
+          
+          	transform.Highlight CODE [LANG] [OPTIONS]
+          
+          LANG is optional; it can also be set via the type option in OPTIONS, which
+          makes this work the same way as HighlightCodeBlock.
         Examples: []
       HighlightCodeBlock:
         Aliases: null

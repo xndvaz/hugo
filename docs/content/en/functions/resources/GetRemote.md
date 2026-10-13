@@ -13,7 +13,7 @@ params:
 {{< new-in 0.141.0 >}}
 The `Err` method on the returned resource was removed in v0.141.0.
 
-Use the [`try`](/functions/go-template/try) statement instead, as shown in the [error handling](#error-handling) example below.
+Use the [`try`](/functions/go-template/try/) statement instead, as shown in the [error handling](#error-handling) example below.
 {{< /new-in >}}
 
 ```go-html-template
@@ -29,33 +29,36 @@ Use the [`try`](/functions/go-template/try) statement instead, as shown in the [
 {{ end }}
 ```
 
+When you publish a remote resource with the [`Permalink`][], [`RelPermalink`][], or [`Publish`][] methods as shown above, Hugo places the resulting file in the root of the `public` directory with the basename of the URL. To ensure unique cache keys, Hugo appends a hash to the original filename.
+
 ## Options
 
-The `resources.GetRemote` function takes an optional map of options.
+The `resources.GetRemote` function accepts an options map.
 
-body
+`body`
 : (`string`) The data you want to transmit to the server.
 
-headers
+`headers`
 : (`map[string][]string`) The collection of key-value pairs that provide additional information about the request.
 
-key
+`key`
 : (`string`) The cache key. Hugo derives the default value from the URL and options map. See [caching](#caching).
 
-method
+`method`
 : (`string`) The action to perform on the requested resource, typically one of `GET`, `POST`, or `HEAD`.
 
-timeout
-: (`string`) Cancels the request if it does not complete within this duration (e.g. "30s").
-
-responseHeaders
+`responseHeaders`
 : {{< new-in 0.143.0 />}}
-: (`[]string`) The headers to extract from the server's response, accessible through the resource's [`Data.Headers`] method. Header name matching is case-insensitive.[`Data.Headers`]: /methods/resource/data/#headers
+: (`[]string`) The headers to extract from the server's response, accessible through the resource's [`Data.Headers`][] method. Header name matching is case-insensitive.
+
+`timeout`
+: {{< new-in 0.157.0 />}}
+: (`string`) The duration after which the request is cancelled if it does not complete, expressed as a [duration](g). If not specified, the request will timeout after 2 minutes.
 
 ## Options examples
 
-> [!note]
-> For brevity, the examples below do not include [error handling].
+> [!NOTE]
+> For brevity, the examples below do not include [error handling](#error-handling).
 
 To include a header:
 
@@ -83,7 +86,7 @@ To post data:
 {{ $url := "https://example.org/api" }}
 {{ $opts := dict
   "method" "post"
-  "body" `{"complete": true}` 
+  "body" `{"complete": true}`
   "headers" (dict  "Content-Type" "application/json")
 }}
 {{ $resource := resources.GetRemote $url $opts }}
@@ -93,7 +96,7 @@ To override the default cache key:
 
 ```go-html-template
 {{ $url := "https://example.org/images/a.jpg" }}
-{{ $opts := dict 
+{{ $opts := dict
   "key" (print $url (now.Format "2006-01-02"))
 }}
 {{ $resource := resources.GetRemote $url $opts }}
@@ -110,7 +113,7 @@ To extract specific headers from the server's response:
 {{ $resource := resources.GetRemote $url $opts }}
 ```
 
-To set a per-request timeout (e.g. when fetching many feeds where a few slow ones should not stall the build):
+Use the `timeout` option to prevent slow external requests from stalling the build when fetching multiple remote feeds:
 
 ```go-html-template
 {{ $url := "https://example.org/feed.rss" }}
@@ -126,9 +129,7 @@ To set a per-request timeout (e.g. when fetching many feeds where a few slow one
 
 ## Remote data
 
-When retrieving remote data, use the [`transform.Unmarshal`] function to [unmarshal](g) the response.
-
-[`transform.Unmarshal`]: /functions/transform/unmarshal/
+When retrieving remote data, use the [`transform.Unmarshal`][] function to [unmarshal](g) the response.
 
 ```go-html-template
 {{ $data := dict }}
@@ -144,8 +145,8 @@ When retrieving remote data, use the [`transform.Unmarshal`] function to [unmars
 {{ end }}
 ```
 
-> [!note]
-> When retrieving remote data, a misconfigured server may send a response header with an incorrect [Content-Type]. For example, the server may set the Content-Type header to `application/octet-stream` instead of `application/json`.
+> [!NOTE]
+> When retrieving remote data, a misconfigured server may send a response header with an incorrect [Content-Type][]. For example, the server may set the Content-Type header to `application/octet-stream` instead of `application/json`.
 >
 > In these cases, pass the resource `Content` through the `transform.Unmarshal` function instead of passing the resource itself. For example, in the above, do this instead:
 >
@@ -153,10 +154,10 @@ When retrieving remote data, use the [`transform.Unmarshal`] function to [unmars
 
 ## Error handling
 
-Use the [`try`] statement to capture HTTP request errors. If you do not handle the error yourself, Hugo will fail the build.
+Use the [`try`][] statement to capture HTTP request errors. If you do not handle the error yourself, Hugo will fail the build.
 
-> [!note]
-> Hugo does not classify an HTTP response with status code 404 as an error. In this case `resources.GetRemote` returns nil.
+> [!NOTE]
+> Hugo does not classify an HTTP response with status code 404 as an error. In this case `resources.GetRemote` returns `nil`.
 
 ```go-html-template
 {{ $url := "https://broken-example.org/images/a.jpg" }}
@@ -188,13 +189,11 @@ To log an error as a warning instead of an error:
 
 ## HTTP response
 
-The [`Data`] method on a resource returned by the `resources.GetRemote` function returns information from the HTTP response.
-
-[`Data`]: /methods/resource/data/
+The [`Data`][] method on a resource returned by the `resources.GetRemote` function returns information from the HTTP response.
 
 ## Caching
 
-Resources returned from `resources.GetRemote` are cached to disk. See [configure file caches] for details.
+Resources returned from `resources.GetRemote` are cached to disk. See [configure file caches][] for details.
 
 By default, Hugo derives the cache key from the arguments passed to the function. Override the cache key by setting a `key` in the options map. Use this approach to have more control over how often Hugo fetches a remote resource.
 
@@ -209,11 +208,11 @@ By default, Hugo derives the cache key from the arguments passed to the function
 
 To protect against malicious intent, the `resources.GetRemote` function inspects the server response including:
 
-- The [Content-Type] in the response header
+- The [Content-Type][] in the response header
 - The file extension, if any
 - The content itself
 
-If Hugo is unable to resolve the media type to an entry in its [allowlist], the function throws an error:
+If Hugo is unable to resolve the media type to an entry in its [allowlist][], the function throws an error:
 
 ```text
 ERROR error calling resources.GetRemote: failed to resolve media type...
@@ -225,7 +224,7 @@ Although the allowlist contains entries for common media types, you may encounte
 
 {{< code-toggle file=hugo >}}
 [security.http]
-mediaTypes = ['^image/avif$','^application/vnd\.api\+json$']
+mediaTypes = ['^application/vnd\.api\+json$']
 {{< /code-toggle >}}
 
 Note that the entry above is:
@@ -233,8 +232,13 @@ Note that the entry above is:
 - An _addition_ to the allowlist; it does not _replace_ the allowlist
 - An array of [regular expressions](g)
 
-[`try`]: /functions/go-template/try
+[Content-Type]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+[`Data.Headers`]: /methods/resource/data/#headers
+[`Data`]: /methods/resource/data/
+[`Permalink`]: /methods/resource/permalink/
+[`Publish`]: /methods/resource/publish/
+[`RelPermalink`]: /methods/resource/relpermalink/
+[`transform.Unmarshal`]: /functions/transform/unmarshal/
+[`try`]: /functions/go-template/try/
 [allowlist]: https://en.wikipedia.org/wiki/Whitelist
 [configure file caches]: /configuration/caches/
-[Content-Type]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-[error handling]: #error-handling

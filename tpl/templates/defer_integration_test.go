@@ -322,3 +322,72 @@ End.
 
 	b.AssertFileContent("public/index.html", "Home.", "Defer 1", "Defer 2", "Defer 3", "End.")
 }
+
+// See issue 15234.
+func TestDeferDifferentOutputFormats(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+[outputFormats.probe]
+mediaType = "text/plain"
+baseName = "index"
+isPlainText = true
+[outputs]
+home = ["html", "probe"]
+-- layouts/home.html --
+{{ $v := "<b>&" }}OUT[{{ $v }}]{{ with (templates.Defer (dict "key" "K" "data" (dict "v" $v))) }}IN[{{ .v }}]{{ end }}
+-- layouts/home.probe.txt --
+{{ $v := "<b>&" }}OUT[{{ $v }}]{{ with (templates.Defer (dict "key" "K" "data" (dict "v" $v))) }}IN[{{ .v }}]{{ end }}
+`
+
+	b := hugolib.Test(t, files)
+
+	b.AssertFileContent("public/index.html", "OUT[&lt;b&gt;&amp;]IN[&lt;b&gt;&amp;]")
+	b.AssertFileContent("public/index.txt", "OUT[<b>&]IN[<b>&]")
+}
+
+// See issue 13492.
+func TestDeferInsidePartialCachedShouldFail(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- layouts/home.html --
+Home.
+{{ partialCached "css.html" . }}
+-- layouts/partials/css.html --
+{{ with (templates.Defer (dict "key" "global")) }}
+ Defer
+{{ end }}
+`
+
+	b, err := hugolib.TestE(t, files)
+
+	b.Assert(err, qt.Not(qt.IsNil))
+	b.Assert(err.Error(), qt.Contains, "templates.Defer cannot be used inside a partialCached partial")
+}
+
+// Verifies that the partialCached ctx flag propagates through a regular partial call.
+// See issue 13492.
+func TestDeferTransitivelyInsidePartialCachedShouldFail(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- layouts/home.html --
+Home.
+{{ partialCached "outer.html" . }}
+-- layouts/partials/outer.html --
+{{ partial "inner.html" . }}
+-- layouts/partials/inner.html --
+{{ with (templates.Defer (dict "key" "global")) }}
+ Defer
+{{ end }}
+`
+
+	b, err := hugolib.TestE(t, files)
+
+	b.Assert(err, qt.Not(qt.IsNil))
+	b.Assert(err.Error(), qt.Contains, "templates.Defer cannot be used inside a partialCached partial")
+}

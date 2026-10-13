@@ -11,7 +11,6 @@ params:
       - collections.Seq LAST
       - collections.Seq FIRST LAST
       - collections.Seq FIRST INCREMENT LAST
-aliases: [/functions/seq]
 ---
 
 ```go-html-template
@@ -31,5 +30,5 @@ A contrived example of iterating over a sequence of integers:
 {{ $product }} → 24
 ```
 
-> [!note]
+> [!NOTE]
 > The slice created by this function is limited to 1 million elements.

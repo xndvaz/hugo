@@ -114,7 +114,7 @@ type ContentRenderer interface {
 	// For internal use only.
 	ParseContent(ctx context.Context, content []byte) (converter.ResultParse, bool, error)
 	// For internal use only.
-	RenderContent(ctx context.Context, content []byte, doc any) (converter.ResultRender, bool, error)
+	RenderContent(ctx context.Context, content []byte, sourceInfo, doc any) (converter.ResultRender, bool, error)
 }
 
 // FileProvider provides the source file.
@@ -221,9 +221,9 @@ type PageMetaProvider interface {
 	// The title used for links.
 	LinkTitle() string
 
-	// IsNode returns whether this is an item of one of the list types in Hugo,
-	// i.e. not a regular content
-	IsNode() bool
+	// IsBranch returns whether this is a branch node, i.e. a node that
+	// can have descendants (home, section, taxonomy or term).
+	IsBranch() bool
 
 	// IsPage returns whether this is a regular content
 	IsPage() bool
@@ -252,6 +252,15 @@ type PageMetaProvider interface {
 	// The configured weight, used as the first sort value in the default
 	// page sort if non-zero.
 	Weight() int
+
+	DeprecatedPageMetaProvider
+}
+
+type DeprecatedPageMetaProvider interface {
+	// IsNode returns whether this is a branch node (e.g. a section).
+	//
+	// Deprecated: Use IsBranch or "not IsPage" instead.
+	IsNode() bool
 }
 
 // NamedPageMetaValue returns a named metadata value from a PageMetaResource.
@@ -322,8 +331,9 @@ type PageMetaInternalProvider interface {
 
 // PageRenderProvider provides a way for a Page to render content.
 type PageRenderProvider interface {
-	// Render renders the given layout with this Page as context.
-	Render(ctx context.Context, layout ...string) (template.HTML, error)
+	// Render renders the given view (a layout template) with this Page as
+	// the data context, or, if given, the second argument CONTEXT.
+	Render(ctx context.Context, args ...any) (template.HTML, error)
 	// RenderString renders the first value in args with the content renderer defined
 	// for this Page.
 	// It takes an optional map as a second argument:
@@ -443,7 +453,7 @@ type RefProvider interface {
 type RelatedKeywordsProvider interface {
 	// Make it indexable as a related.Document
 	// RelatedKeywords is meant for internal usage only.
-	RelatedKeywords(cfg related.IndexConfig) ([]related.Keyword, error)
+	RelatedKeywords(cfg related.IndexConfig) ([]string, error)
 }
 
 // ShortcodeInfoProvider provides info about the shortcodes in a Page.
@@ -553,12 +563,21 @@ type SiteVectorProvider interface {
 	SiteVector() sitesmatrix.Vector
 }
 
-// GetSiteVector returns the site vector for a Page.
+// GetSiteVector returns the site vector for a Page,
+// or the zero value if the Page does not implement SiteVectorProvider.
 func GetSiteVector(p Page) sitesmatrix.Vector {
 	if sp, ok := p.(SiteVectorProvider); ok {
 		return sp.SiteVector()
 	}
 	return sitesmatrix.Vector{}
+}
+
+// LookupSiteVector returns the site vector for a Page and whether it was found.
+func LookupSiteVector(p Page) (sitesmatrix.Vector, bool) {
+	if sp, ok := p.(SiteVectorProvider); ok {
+		return sp.SiteVector(), true
+	}
+	return sitesmatrix.Vector{}, false
 }
 
 // PageWithContext is a Page with a context.Context.

@@ -16,6 +16,7 @@ package highlight
 
 import (
 	"fmt"
+	gohtml "html"
 	"strconv"
 	"strings"
 
@@ -95,7 +96,8 @@ func (cfg Config) toHTMLOptions() ([]html.Option, error) {
 	)
 
 	if cfg.LineAnchors != "" {
-		lineAnchors = cfg.LineAnchors + "-"
+		// Chroma writes this verbatim into id and href attributes.
+		lineAnchors = gohtml.EscapeString(cfg.LineAnchors) + "-"
 	}
 
 	switch v := cfg.LineNos.(type) {
@@ -148,22 +150,6 @@ func (cfg Config) toHTMLOptions() ([]html.Option, error) {
 	return options, nil
 }
 
-func applyOptions(opts any, cfg *Config) error {
-	if opts == nil {
-		return nil
-	}
-	switch vv := opts.(type) {
-	case map[string]any:
-		return applyOptionsFromMap(vv, cfg)
-	default:
-		s, err := cast.ToStringE(opts)
-		if err != nil {
-			return err
-		}
-		return applyOptionsFromString(s, cfg)
-	}
-}
-
 func applyOptionsFromString(opts string, cfg *Config) error {
 	optsm, err := parseHighlightOptions(opts)
 	if err != nil {
@@ -175,6 +161,43 @@ func applyOptionsFromString(opts string, cfg *Config) error {
 func applyOptionsFromMap(optsm map[string]any, cfg *Config) error {
 	normalizeHighlightOptions(optsm)
 	return mapstructure.WeakDecode(optsm, cfg)
+}
+
+// applyOptions applies opts (a string or a map) to cfg. The type and code
+// options, if set, are not part of Config and instead override lang and code
+// respectively. Shared by Highlight and HighlightCodeBlock. See issue 11872.
+func applyOptions(opts any, cfg *Config, lang, code *string) error {
+	if opts == nil {
+		return nil
+	}
+
+	var optsm map[string]any
+	switch vv := opts.(type) {
+	case map[string]any:
+		optsm = make(map[string]any, len(vv))
+		for k, v := range vv {
+			optsm[strings.ToLower(k)] = v
+		}
+	default:
+		s, err := cast.ToStringE(opts)
+		if err != nil {
+			return err
+		}
+		if optsm, err = parseHighlightOptions(s); err != nil {
+			return err
+		}
+	}
+
+	if v, found := optsm["type"]; found {
+		*lang = cast.ToString(v)
+		delete(optsm, "type")
+	}
+	if v, found := optsm["code"]; found {
+		*code = cast.ToString(v)
+		delete(optsm, "code")
+	}
+
+	return applyOptionsFromMap(optsm, cfg)
 }
 
 func applyOptionsFromCodeBlockContext(ctx hooks.CodeblockContext, cfg *Config) error {

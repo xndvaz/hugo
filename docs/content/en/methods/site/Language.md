@@ -11,95 +11,147 @@ params:
 
 The `Language` method on a `Site` object returns the `Language` object for the given site, derived from the language definition in your project configuration.
 
-You can also use the `Language` method on a `Page` object. See&nbsp;[details][].
+You can also use the `Language` method on a `Page` object. See [details][].
 
 ## Methods
 
-The examples below assume the following in your project configuration:
+Use these methods on the `Language` object.
+
+The examples below assume the following language definition.
 
 {{< code-toggle file=hugo >}}
 [languages.de]
-languageCode = 'de-DE'
-languageDirection = 'ltr'
-languageName = 'Deutsch'
-weight = 1
+direction = 'ltr'
+label = 'Deutsch'
+locale = 'de-DE'
+weight = 2
 {{< /code-toggle >}}
 
-### IsDefault
+`Direction`
+: {{< new-in 0.158.0 />}}
+: (`string`) Returns the [`direction`][] from the language definition.
 
-{{< new-in 0.153.0 />}}
+  ```go-html-template
+  {{ .Site.Language.Direction }} → ltr
+  ```
 
-(`bool`) Reports whether this is the [default language][].
+`FormatAccounting`
+: {{< new-in 0.168.0 />}}
+: (`string`) Formats a number as currency in accounting notation for this language. See [`lang.FormatAccounting`][].
 
-```go-html-template
-{{ .Site.Language.IsDefault }} → true
-```
+  ```go-html-template
+  {{ .Site.Language.FormatAccounting 2 "EUR" -12.3 }} → -12,30 €
+  ```
 
-### Lang
+`FormatCurrency`
+: {{< new-in 0.168.0 />}}
+: (`string`) Formats a number as currency for this language. See [`lang.FormatCurrency`][].
 
-(`string`) Returns the language tag as defined by [RFC 5646][]. This is the lowercased key from your project configuration.
+  ```go-html-template
+  {{ .Site.Language.FormatCurrency 2 "EUR" 12.3 }} → 12,30 €
+  ```
 
-```go-html-template
-{{ .Site.Language.Lang }} → de
-```
+`FormatNumber`
+: {{< new-in 0.168.0 />}}
+: (`string`) Formats a number for this language. See [`lang.FormatNumber`][].
 
-### LanguageCode
+  ```go-html-template
+  {{ .Site.Language.FormatNumber 2 1234.5 }} → 1.234,50
+  ```
 
-(`string`) Returns the [`languageCode`][] from your project configuration. Falls back to `Lang` if not defined.
+`FormatPercent`
+: {{< new-in 0.168.0 />}}
+: (`string`) Formats a number as a percentage for this language. See [`lang.FormatPercent`][].
 
-```go-html-template
-{{ .Site.Language.LanguageCode }} → de-DE
-```
+  ```go-html-template
+  {{ .Site.Language.FormatPercent 1 12.3 }} → 12,3 %
+  ```
 
-### LanguageDirection
+`IsDefault`
+: {{< new-in 0.153.0 />}}
+: (`bool`) Reports whether this is the [default language](g).
 
-(`string`) Returns the [`languageDirection`][] from your project configuration.
+  ```go-html-template
+  {{ .Site.Language.IsDefault }} → true
+  ```
 
-```go-html-template
-{{ .Site.Language.LanguageDirection }} → ltr
-```
+`Label`
+: {{< new-in 0.158.0 />}}
+: (`string`) Returns the [`label`][] from the language definition.
 
-### LanguageName
+  ```go-html-template
+  {{ .Site.Language.Label }} → Deutsch
+  ```
 
-(`string`) Returns the [`languageName`][] from your project configuration.
+`Lang`
+: {{<deprecated-in 0.158.0 />}}
+: Use [`Name`](#name) instead.
 
-```go-html-template
-{{ .Site.Language.LanguageName }} → Deutsch
-```
+`LanguageCode`
+: {{<deprecated-in 0.158.0 />}}
+: Use [`Locale`](#locale) instead.
 
-### Name
+`LanguageDirection`
+: {{<deprecated-in 0.158.0 />}}
+: Use [`Direction`](#direction) instead.
 
-{{< new-in 0.153.0 />}}
+`LanguageName`
+: {{<deprecated-in 0.158.0 />}}
+: Use [`Label`](#label) instead.
 
-(`string`) Returns the language tag as defined by [RFC 5646][]. This is the lowercased key from your project configuration. This is an alias for `Lang`.
+`Locale`
+: {{< new-in 0.158.0 />}}
+: (`string`) Returns the [`locale`][] from the language definition, falling back to [`Name`](#name).
 
-```go-html-template
-{{ .Site.Language.Name }} → de
-```
+  ```go-html-template
+  {{ .Site.Language.Locale }} → de-DE
+  ```
 
-### Weight
+`Name`
+: {{< new-in 0.153.0 />}}
+: (`string`) Returns the language tag as defined by [RFC 5646][]. This is the lowercased key from the language definition.
 
-(`int`) Returns the language [`weight`][] from your project configuration.
+  ```go-html-template
+  {{ .Site.Language.Name }} → de
+  ```
 
-```go-html-template
-{{ .Site.Language.Weight }} → 1
-```
+`Translate`
+: {{< new-in 0.168.0 />}}
+: (`string`) Translates a string using the translation tables for this language. See [`lang.Translate`][].
+
+  ```go-html-template
+  {{ .Site.Language.Translate "hello" }} → Hallo
+  ```
+
+  Use this to translate a string into a language other than that of the current page:
+
+  ```go-html-template
+  {{ range .Site.Languages }}
+    {{ .Translate "hello" }}
+  {{ end }}
+  ```
+
+`Weight`
+: {{<deprecated-in 0.158.0 />}}
 
 ## Example
 
-Some of the methods above are commonly used in a base template as attributes for the `html` element.
+Some of the methods above are commonly used in a _base_ template as attributes for the `html` element.
 
 ```go-html-template
 <html
-  lang="{{ .Site.Language.LanguageCode }}" 
-  dir="{{ or .Site.Language.LanguageDirection `ltr` }}"
+  lang="{{ .Site.Language.Locale }}"
+  dir="{{ or .Site.Language.Direction `ltr` }}"
 >
 ```
 
-[`languageCode`]: /configuration/languages/#languagecode
-[`languageDirection`]: /configuration/languages/#languagedirection
-[`languageName`]: /configuration/languages/#languagename
-[`weight`]: /configuration/languages/#weight
-[default language]: /quick-reference/glossary/#default-language
-[details]: /methods/page/language/
 [RFC 5646]: https://datatracker.ietf.org/doc/html/rfc5646
+[`direction`]: /configuration/languages/#direction
+[`lang.FormatAccounting`]: /functions/lang/formataccounting/
+[`lang.FormatCurrency`]: /functions/lang/formatcurrency/
+[`lang.FormatNumber`]: /functions/lang/formatnumber/
+[`lang.FormatPercent`]: /functions/lang/formatpercent/
+[`lang.Translate`]: /functions/lang/translate/
+[`label`]: /configuration/languages/#label
+[`locale`]: /configuration/languages/#locale
+[details]: /methods/page/language/

@@ -14,15 +14,15 @@
 package hugolib
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/bep/helpers/maphelpers"
 	"github.com/gohugoio/go-radix"
-	"github.com/gohugoio/hugo/common/hmaps"
+	"github.com/gohugoio/hugo/common/herrors"
 	"github.com/gohugoio/hugo/common/paths"
 	"github.com/gohugoio/hugo/common/types"
 	"github.com/gohugoio/hugo/hugofs/files"
@@ -54,9 +54,9 @@ type allPagesAssembler struct {
 	rwRoot *doctree.NodeShiftTreeWalker[contentNode] // walks resources.
 
 	// Walking state.
-	seenTerms        *hmaps.Map[term, sitesmatrix.Vectors]
-	droppedPages     *hmaps.Map[*Site, []string] // e.g. drafts, expired, future.
-	seenRootSections *hmaps.Map[string, bool]
+	seenTerms        *maphelpers.ConcurrentMap[term, sitesmatrix.Vectors]
+	droppedPages     *maphelpers.ConcurrentMap[*Site, []string] // e.g. drafts, expired, future.
+	seenRootSections *maphelpers.ConcurrentMap[string, bool]
 	seenHome         bool // set before we fan out to multiple goroutines.
 }
 
@@ -75,7 +75,7 @@ func newAllPagesAssembler(
 	pw := rw.Extend()
 	pw.Tree = m.treePages
 
-	seenRootSections := hmaps.NewMap[string, bool]()
+	seenRootSections := maphelpers.NewConcurrentMap[string, bool]()
 	seenRootSections.Set("", true) // home.
 
 	return &allPagesAssembler{
@@ -83,8 +83,8 @@ func newAllPagesAssembler(
 		h:                          h,
 		m:                          m,
 		assembleChanges:            assembleChanges,
-		seenTerms:                  hmaps.NewMap[term, sitesmatrix.Vectors](),
-		droppedPages:               hmaps.NewMap[*Site, []string](),
+		seenTerms:                  maphelpers.NewConcurrentMap[term, sitesmatrix.Vectors](),
+		droppedPages:               maphelpers.NewConcurrentMap[*Site, []string](),
 		seenRootSections:           seenRootSections,
 		assembleSectionsInParallel: !h.isRebuild(), // On partial rebuilds, there's potential data races with parallel section assembly.
 		pwRoot:                     pw,
@@ -134,7 +134,7 @@ func (a *allPagesAssembler) createAllPages() error {
 		}()
 	}
 
-	if err := cmp.Or(a.doCreatePages("", 0), a.g.Wait()); err != nil {
+	if err := herrors.Or(a.doCreatePages("", 0), a.g.Wait()); err != nil {
 		return err
 	}
 	if err := a.pwRoot.WalkContext.HandleEventsAndHooks(); err != nil {
@@ -362,7 +362,7 @@ func (a *allPagesAssembler) doCreatePages(prefix string, depth int) error {
 
 		switch v := n.(type) {
 		case contentNodeSeq, contentNodes:
-			return handleContentNodeSeq(contentNodeToSeq(v))
+			return handleContentNodeSeq(cnh.contentNodeToSeq(v))
 		case *pageMetaSource:
 			n2, err = handlePageMetaSource(v, nil, false)
 			if err != nil {
@@ -497,17 +497,26 @@ func (a *allPagesAssembler) doCreatePages(prefix string, depth int) error {
 
 		isTaxonomy := !a.h.getFirstTaxonomyConfig(s).IsZero()
 		isRootSection := !isTaxonomy && level == 1 && cnh.isBranchNode(n)
-
-		if isRootSection {
-			// This is a root section.
-			a.seenRootSections.SetIfAbsent(cnh.PathInfo(n).Section(), true)
-		} else if !isTaxonomy {
+		if !isTaxonomy {
 			p := cnh.PathInfo(n)
 			rootSection := p.Section()
 			_, err := a.seenRootSections.GetOrCreate(rootSection, func() (bool, error) {
+				if isRootSection {
+					return true, nil
+				}
+
 				// Try to preserve the original casing if possible.
 				sectionUnnormalized := p.Unnormalized().Section()
 				rootSectionPath := a.h.Conf.PathParser().Parse(files.ComponentFolderContent, "/"+sectionUnnormalized+"/_index.md")
+
+				// A regular page (e.g. content/s1.md) may share the same tree
+				// key as its section (both map to /s1). In that case the page
+				// itself already occupies the section root; creating a synthetic
+				// section on top of it would overwrite the real content.
+				if _, exists := treePages.GetRaw(rootSectionPath.Base()); exists {
+					return true, nil
+				}
+
 				var rootSectionPages contentNode
 				rootSectionPages, _, err = transformPages(rootSectionPath.Base(), &pageMetaSource{
 					pathInfo:        rootSectionPath,
@@ -520,6 +529,51 @@ func (a *allPagesAssembler) doCreatePages(prefix string, depth int) error {
 					return true, err
 				}
 				treePages.InsertRaw(rootSectionPath.Base(), rootSectionPages)
+
+				// Collect vectors from descendant pages to create section
+				// pages for all languages that have content in this section.
+				nm, replaced := contentNodeToContentNodesPage(rootSectionPages)
+				if replaced {
+					treePages.InsertRaw(rootSectionPath.Base(), nm)
+				}
+				missingVectors := sitesmatrix.Vectors{}
+				pw.WalkContext.AddEventListener("sitesmatrix", rootSectionPath.Base(),
+					func(e *doctree.Event[contentNode]) {
+						if cnh.isBranchNode(e.Source) && !a.h.getFirstTaxonomyConfig(e.Path).IsZero() {
+							return
+						}
+						n := e.Source
+						e.StopPropagation()
+						n.forEeachContentNode(
+							func(vec sitesmatrix.Vector, nn contentNode) bool {
+								if _, found := nm[vec]; !found {
+									missingVectors[vec] = struct{}{}
+								}
+								return true
+							})
+					},
+				)
+				pw.WalkContext.HooksPost().Push(
+					func() error {
+						if len(missingVectors) > 0 {
+							vec := missingVectors.VectorSample()
+							nm[vec] = &pageMetaSource{
+								pathInfo:            rootSectionPath,
+								sitesMatrixBase:     missingVectors,
+								sitesMatrixBaseOnly: true,
+								pageConfigSource: &pagemeta.PageConfigEarly{
+									Kind: kinds.KindSection,
+								},
+							}
+							_, _, err := transformPages(rootSectionPath.Base(), nm, cascades)
+							if err != nil {
+								return err
+							}
+						}
+						return nil
+					},
+				)
+
 				return true, nil
 			})
 			if err != nil {
@@ -727,7 +781,7 @@ func (a *allPagesAssembler) doCreatePages(prefix string, depth int) error {
 
 				if _, found := nodes[p.s.siteVector]; !found {
 					var rs *resourceSource
-					match := cnh.findContentNodeForSiteVector(p.s.siteVector, duplicateResourceFiles, contentNodeToSeq(n))
+					match := cnh.findContentNodeForSiteVector(p.s.siteVector, duplicateResourceFiles, cnh.contentNodeToSeq(n))
 					if match == nil {
 						return true
 					}
@@ -745,6 +799,38 @@ func (a *allPagesAssembler) doCreatePages(prefix string, depth int) error {
 				return true
 			},
 		)
+
+		// Duplicate resources across roles when owner pages share the same source.
+		// This ensures resources in a page bundle are available to all roles
+		// that the page spans, avoiding 404 errors in the rendered output.
+		if len(nodes) > 0 {
+			forEeachResourceOwnerPage(func(p *pageState) bool {
+				if _, found := nodes[p.s.siteVector]; found {
+					return true
+				}
+				// Find a resource from another role whose page shares
+				// the same pageMetaSource (i.e. same mount/content file).
+				forEeachResourceOwnerPage(func(donor *pageState) bool {
+					if donor.s.siteVector == p.s.siteVector {
+						return true
+					}
+					if donor.m.pageMetaSource != p.m.pageMetaSource {
+						return true
+					}
+					// Only clone across role differences, not language or version.
+					if donor.s.siteVector[sitesmatrix.Language] != p.s.siteVector[sitesmatrix.Language] ||
+						donor.s.siteVector[sitesmatrix.Version] != p.s.siteVector[sitesmatrix.Version] {
+						return true
+					}
+					if rs, ok := nodes[donor.s.siteVector]; ok {
+						nodes[p.s.siteVector] = rs.(*resourceSource).clone().assignSiteVector(p.s.siteVector)
+						return false
+					}
+					return true
+				})
+				return true
+			})
+		}
 
 		return
 	}
@@ -1299,8 +1385,11 @@ func (a *allPagesAssembler) createMissingTaxonomies() error {
 	for viewName, languages := range viewLanguages {
 		key := viewName.pluralTreeKey
 		if a.h.isRebuild() {
-			if v := tree.Get(key); v != nil {
-				// Already there.
+			// Note that we cannot use tree.Get here, as the tree at this point
+			// may hold not yet assembled *pageMetaSource nodes.
+			// We're only interested in whether the auto created (not file backed)
+			// taxonomy node is still there.
+			if n, found := tree.GetRaw(key); found && cnh.hasAutoContentNode(n) {
 				continue
 			}
 		}

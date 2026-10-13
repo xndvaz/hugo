@@ -15,6 +15,8 @@ package images
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -36,9 +38,8 @@ import (
 )
 
 // Decoder defines the decoding of an image format.
-// These matches the globalmpackage image functions.
 type Decoder interface {
-	Decode(r io.Reader) (image.Image, error)
+	Decode(r io.Reader, options map[string]any) (image.Image, error)
 	DecodeConfig(r io.Reader) (image.Config, error)
 }
 
@@ -51,20 +52,24 @@ type Encoder interface {
 	Encode(w io.Writer, src image.Image, options map[string]any) error
 }
 
-// EncodeDecoder defines both decoding and encoding of an image format as defined by the standard library.
+// EncodeDecoder defines both decoding and encoding of an image format.
 type EncodeDecoder interface {
 	Decoder
 	Encoder
+
+	// MemoryLimit returns the memory limit in bytes.
+	MemoryLimit() int64
 }
 
 // Codec is a generic image codec supporting multiple formats.
 type Codec struct {
 	webp   EncodeDecoder
+	avif   EncodeDecoder
 	debugl logg.LevelLogger
 }
 
-func newCodec(webp EncodeDecoder, debugl logg.LevelLogger) *Codec {
-	return &Codec{webp: webp, debugl: debugl}
+func newCodec(webp, avif EncodeDecoder, debugl logg.LevelLogger) *Codec {
+	return &Codec{webp: webp, avif: avif, debugl: debugl}
 }
 
 func (d *Codec) EncodeTo(conf ImageConfig, w io.Writer, img image.Image) error {
@@ -136,7 +141,21 @@ func (d *Codec) EncodeTo(conf ImageConfig, w io.Writer, img image.Image) error {
 		return tiff.Encode(w, img, &tiff.Options{Compression: tiff.Deflate, Predictor: true})
 	case BMP:
 		return bmp.Encode(w, img)
+	case AVIF:
+		if err := checkAnimationMemory(img, d.avif.MemoryLimit()); err != nil {
+			return err
+		}
+		opts := map[string]any{
+			"compression":  conf.Compression,
+			"quality":      conf.Quality,
+			"encoderSpeed": conf.EncoderSpeed,
+			"hint":         conf.Hint,
+		}
+		return d.avif.Encode(w, img, opts)
 	case WEBP:
+		if err := checkAnimationMemory(img, d.webp.MemoryLimit()); err != nil {
+			return err
+		}
 		// Convert bool to int because the C code reads it as a number.
 		useSharpYuvInt := 0
 		if conf.UseSharpYuv {
@@ -151,11 +170,13 @@ func (d *Codec) EncodeTo(conf ImageConfig, w io.Writer, img image.Image) error {
 		}
 		return d.webp.Encode(w, img, opts)
 	default:
-		return errors.New("format not supported")
+		return fmt.Errorf("format %q not supported", conf.TargetFormat)
 	}
 }
 
-func (d *Codec) DecodeFormat(f Format, r io.Reader) (image.Image, error) {
+// DecodeFormat decodes r as format f.
+// If firstFrameOnly is set, only the first frame of animated images is decoded.
+func (d *Codec) DecodeFormat(f Format, r io.Reader, firstFrameOnly bool) (image.Image, error) {
 	d.debugl.Log(
 		logg.StringFunc(
 			func() string {
@@ -163,6 +184,7 @@ func (d *Codec) DecodeFormat(f Format, r io.Reader) (image.Image, error) {
 			},
 		),
 	)
+	options := map[string]any{"firstFrameOnly": firstFrameOnly}
 	switch f {
 	case JPEG, PNG:
 		// We reworked this decode/encode setup to get full WebP support in v0.153.0.
@@ -173,6 +195,9 @@ func (d *Codec) DecodeFormat(f Format, r io.Reader) (image.Image, error) {
 		img, _, err := image.Decode(r)
 		return img, err
 	case GIF:
+		if firstFrameOnly {
+			return gif.Decode(r)
+		}
 		g, err := gif.DecodeAll(r)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode gif: %w", err)
@@ -185,8 +210,16 @@ func (d *Codec) DecodeFormat(f Format, r io.Reader) (image.Image, error) {
 		return tiff.Decode(r)
 	case BMP:
 		return bmp.Decode(r)
+	case AVIF:
+		if err := d.checkDecodeMemory(f, r, firstFrameOnly, d.avif.MemoryLimit()); err != nil {
+			return nil, err
+		}
+		return d.avif.Decode(r, options)
 	case WEBP:
-		img, err := d.webp.Decode(r)
+		if err := d.checkDecodeMemory(f, r, firstFrameOnly, d.webp.MemoryLimit()); err != nil {
+			return nil, err
+		}
+		img, err := d.webp.Decode(r, options)
 		if err == nil {
 			return img, nil
 		}
@@ -210,6 +243,46 @@ func (d *Codec) DecodeFormat(f Format, r io.Reader) (image.Image, error) {
 	}
 }
 
+// checkDecodeMemory fails early if decoding all frames of an animated image
+// would obviously exceed the memory limit.
+func (d *Codec) checkDecodeMemory(f Format, r io.Reader, firstFrameOnly bool, limit int64) error {
+	rs, ok := r.(io.ReadSeeker)
+	if firstFrameOnly || !ok {
+		return nil
+	}
+	conf, frameCount, _, configErr := d.decodeConfig(f, rs, true)
+	if _, err := rs.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if configErr != nil {
+		// Let the decoder report it.
+		return nil
+	}
+	return checkFramesMemory(conf.Width, conf.Height, frameCount, limit)
+}
+
+// checkAnimationMemory fails early if encoding all frames of img
+// would obviously exceed the memory limit.
+func checkAnimationMemory(img image.Image, limit int64) error {
+	anim, ok := img.(himage.AnimatedImage)
+	if !ok {
+		return nil
+	}
+	b := img.Bounds()
+	return checkFramesMemory(b.Dx(), b.Dy(), len(anim.GetFrames()), limit)
+}
+
+func checkFramesMemory(w, h, frameCount int, limit int64) error {
+	if frameCount < 2 {
+		return nil
+	}
+	// A lower bound: 4 bytes per pixel per frame.
+	if need := int64(w) * int64(h) * 4 * int64(frameCount); need > limit {
+		return fmt.Errorf("%d frames of %dx%d need at least %d MiB of memory, the limit is %d MiB; consider using firstFrameOnly", frameCount, w, h, need>>20, limit>>20)
+	}
+	return nil
+}
+
 func (d *Codec) Decode(r io.Reader) (image.Image, error) {
 	d.debugl.Log(
 		logg.StringFunc(
@@ -224,7 +297,7 @@ func (d *Codec) Decode(r io.Reader) (image.Image, error) {
 		return nil, err
 	}
 	if format != 0 {
-		return d.DecodeFormat(format, rr)
+		return d.DecodeFormat(format, rr, false)
 	}
 
 	// Fallback to the standard image.Decode.
@@ -233,25 +306,36 @@ func (d *Codec) Decode(r io.Reader) (image.Image, error) {
 }
 
 func (d *Codec) DecodeConfig(f Format, r io.Reader) (image.Config, string, error) {
+	conf, _, name, err := d.decodeConfig(f, r, false)
+	return conf, name, err
+}
+
+// decodeConfig also returns the frame count, which is 1 for still images.
+// The frame count is only read for GIF and PNG if withFrameCount is set.
+func (d *Codec) decodeConfig(f Format, r io.Reader, withFrameCount bool) (image.Config, int, string, error) {
+	rs, isSeeker := r.(io.ReadSeeker)
 	rr := toPeekReader(r)
 	format, err := formatFromImage(rr)
 	if err != nil {
-		return image.Config{}, "", err
+		return image.Config{}, 0, "", err
 	}
 	if format == 0 {
 		format = f
 	}
 	r = rr
-	if format.UseImageMetaConfigDecoder() {
-		rs, err := hugio.NewReadSeekerNoOpCloserFromReader(r)
-		if err != nil {
-			return image.Config{}, "", err
+	if mf := format.toImageMetaConfigFormat(withFrameCount); mf != -1 {
+		if !isSeeker {
+			// Note that this reads the entire image into memory.
+			rs, err = hugio.NewReadSeekerNoOpCloserFromReader(r)
+			if err != nil {
+				return image.Config{}, 0, "", err
+			}
 		}
-		rs.Seek(0, 0)
+		rs.Seek(0, io.SeekStart)
 		res, err := imagemeta.Decode(
 			imagemeta.Options{
 				R:           rs,
-				ImageFormat: format.ToImageMetaImageFormatFormat(),
+				ImageFormat: mf,
 				Sources:     imagemeta.CONFIG,
 			},
 		)
@@ -260,17 +344,17 @@ func (d *Codec) DecodeConfig(f Format, r io.Reader) (image.Config, string, error
 				Width:      res.ImageConfig.Width,
 				Height:     res.ImageConfig.Height,
 				ColorModel: color.RGBAModel,
-			}, strings.ToLower(format.String()), nil
+			}, res.ImageConfig.FrameCount, strings.ToLower(format.String()), nil
 		}
 
 		// Fallback to the standard image.DecodeConfig.
-		rs.Seek(0, 0)
+		rs.Seek(0, io.SeekStart)
 		r = rs
 	}
 
 	conf, name, err := image.DecodeConfig(r)
 
-	return conf, name, err
+	return conf, 1, name, err
 }
 
 // toPeekReader converts an io.Reader to a peekReader.
@@ -296,6 +380,12 @@ const (
 	magicGif = "GIF8???"
 )
 
+var (
+	avifBrandAvis = []byte("avis")
+	avifBrandAvif = []byte("avif")
+	avifFtyp      = []byte("ftyp")
+)
+
 type magicFormat struct {
 	magic  string
 	format Format
@@ -308,7 +398,7 @@ var magicFormats = []magicFormat{
 
 // formatFromImage determines the image format from the magic bytes.
 // Note that this is only a partial implementation,
-// as we currently only need WebP and GIF detection.
+// as we currently only need WebP, GIF and AVIF detection.
 // The others can be handled by the standard library.
 func formatFromImage(r peekReader) (Format, error) {
 	for _, mf := range magicFormats {
@@ -318,7 +408,37 @@ func formatFromImage(r peekReader) (Format, error) {
 			return mf.format, nil
 		}
 	}
+	if isAvif(r) {
+		return AVIF, nil
+	}
 	return 0, nil
+}
+
+// isAvif reports whether r begins with an ISOBMFF ftyp box that identifies
+// the file as AVIF, either via the major brand ("avif"/"avis") or the
+// compatible brands list (e.g. major "mif1" with "avif" as a compatible brand).
+func isAvif(r peekReader) bool {
+	b, _ := r.Peek(12)
+	if len(b) < 12 || !bytes.Equal(b[4:8], avifFtyp) {
+		return false
+	}
+	if brand := b[8:12]; bytes.Equal(brand, avifBrandAvif) || bytes.Equal(brand, avifBrandAvis) {
+		return true
+	}
+	b, _ = r.Peek(64)
+	if len(b) < 16 {
+		return false
+	}
+	end := int(binary.BigEndian.Uint32(b[:4]))
+	if end < 16 || end > len(b) {
+		end = len(b)
+	}
+	for i := 16; i+4 <= end; i += 4 {
+		if brand := b[i : i+4]; bytes.Equal(brand, avifBrandAvif) || bytes.Equal(brand, avifBrandAvis) {
+			return true
+		}
+	}
+	return false
 }
 
 func match(magic string, b []byte) bool {

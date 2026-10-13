@@ -2,11 +2,8 @@
 # Note that when updating this, you may also need to update the badge in README.md.
 LIBWEBP_VERSION = v1.6.0
 
-# The path to the WebAssembly SDK. Can be overridden from the command line.
-# e.g., make WASI_SDK_PATH=/path/to/wasi-sdk
-# Download releases from https://github.com/WebAssembly/wasi-sdk/releases.
-# Note that on MacOS, you may need to add some whitelistings in Privacy & Security > Security.
-WASI_SDK_PATH ?= /opt/wasi-sdk
+# Note that you also need wasm-validate from WebAssembly Binary Toolkit (WABT) installed.
+include ../wasisdk.mk
 
 BUILD_DIR := build
 BUILD_WASM := ${BUILD_DIR}/webp.wasm
@@ -15,10 +12,10 @@ LIBWEBP_SRC := libwebp
 
 # Set the compiler and toolchain for WASI
 CC := $(WASI_SDK_PATH)/bin/clang
-CMAKE_TOOLCHAIN_FILE := $(WASI_SDK_PATH)/share/cmake/wasi-sdk.cmake
+CMAKE_TOOLCHAIN_FILE := $(WASI_SDK_PATH)/share/cmake/wasi-sdk-p1.cmake
 
 # Source files for the final WASM binary
-C_SOURCES := webp.c deps/parson/parson.c
+C_SOURCES := webp.c ../deps/parson/parson.c
 
 # Include paths
 C_INCLUDES := -I$(LIBWEBP_SRC)/src -I$(BUILD_DIR)/src -I.
@@ -39,7 +36,7 @@ WASM_CFLAGS := \
 .PHONY: all clean
 
 # Default target: build the WebAssembly binary
-all: $(LIBWEBP_SRC) $(BUILD_DIR)
+all: check-wasi-sdk $(LIBWEBP_SRC) $(BUILD_DIR)
 	@echo ">>> Configuring and building C libraries in $(BUILD_DIR)"
 	cd $(BUILD_DIR) && \
 	cmake $(realpath $(LIBWEBP_SRC)) \
@@ -60,7 +57,6 @@ all: $(LIBWEBP_SRC) $(BUILD_DIR)
 	$(CC) $(WASM_CFLAGS) --sysroot=$(WASI_SDK_PATH)/share/wasi-sysroot $(C_INCLUDES) -o $(BUILD_WASM) $(C_SOURCES) $(LD_LIBS)
 	@echo ">>> Moving the WebAssembly binary: $(TARGET_WASM_DIR)"
 	mv $(BUILD_WASM) $(TARGET_WASM_DIR)
-
 
 
 # Rule to create the build directory

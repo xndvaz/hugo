@@ -45,6 +45,7 @@ func NewRootMappingFs(fs afero.Fs, rms ...*RootMapping) (*RootMappingFs, error) 
 	rootMapToReal := radix.New[[]*RootMapping]()
 	realMapToRoot := radix.New[[]*RootMapping]()
 	id := fmt.Sprintf("rfs-%d", rootMappingFsCounter.Add(1))
+	symlinks := newSymlinkChecker(fs)
 
 	addMapping := func(key string, rm *RootMapping, to *radix.Tree[[]*RootMapping]) {
 		mappings, _ := to.Get(key)
@@ -59,6 +60,19 @@ func NewRootMappingFs(fs afero.Fs, rms ...*RootMapping) (*RootMappingFs, error) 
 
 		if len(rm.To) < 2 {
 			panic(fmt.Sprintf("invalid root mapping; from/to: %s/%s", rm.From, rm.To))
+		}
+
+		// Don't allow a symlinked mount root (or any directory between it and
+		// the module root) to escape the module. The main project is exempt;
+		// its mount sources may be absolute, so a symlink gains nothing.
+		if !rm.IsProject {
+			symlink, err := symlinks.isSymlinkOrHasSymlinkParent(rm.ToBase, rm.To)
+			if err != nil {
+				return nil, err
+			}
+			if symlink {
+				continue
+			}
 		}
 
 		fi, err := fs.Stat(rm.To)
@@ -157,6 +171,7 @@ func NewRootMappingFs(fs afero.Fs, rms ...*RootMapping) (*RootMappingFs, error) 
 		Fs:            fs,
 		rootMapToReal: rootMapToReal,
 		realMapToRoot: realMapToRoot,
+		symlinks:      symlinks,
 	}
 
 	return rfs, nil
@@ -229,6 +244,7 @@ type RootMappingFs struct {
 	afero.Fs
 	rootMapToReal *radix.Tree[[]*RootMapping]
 	realMapToRoot *radix.Tree[[]*RootMapping]
+	symlinks      *symlinkChecker
 }
 
 var rootMappingFsCounter atomic.Int32
@@ -632,6 +648,14 @@ func (rfs *RootMappingFs) collectDirEntries(prefix string) ([]iofs.DirEntry, err
 			if rm.fi.IsDir() {
 				fi, err := rm.fi.Meta().JoinStat(subdir)
 				if err == nil {
+					// Apply the same symlink rules as statRoot.
+					symlink, err := rfs.symlinks.isSymlinkOrHasSymlinkParent(rm.To, fi.Meta().Filename)
+					if err != nil {
+						return nil, err
+					}
+					if symlink {
+						continue
+					}
 					if err := collectDir(rm, fi); err != nil {
 						return nil, err
 					}
@@ -724,9 +748,22 @@ func (fs *RootMappingFs) statRoot(root *RootMapping, filename string) (FileMetaI
 	}
 
 	filename = root.filename(filename)
-	fi, err := fs.Fs.Stat(filename)
+	fi, err := LstatIfPossible(fs.Fs, filename)
 	if err != nil {
 		return nil, err
+	}
+
+	// Don't allow symlinks to escape the mount, neither as the file itself
+	// nor as any directory between it and the mount root.
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return nil, os.ErrNotExist
+	}
+	symlinkParent, err := fs.symlinks.hasSymlinkParent(root.To, filepath.Dir(filename))
+	if err != nil {
+		return nil, err
+	}
+	if symlinkParent {
+		return nil, os.ErrNotExist
 	}
 
 	var opener func() (afero.File, error)

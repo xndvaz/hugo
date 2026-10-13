@@ -74,6 +74,13 @@ type InternalConfig struct {
 	LiveReloadPort int
 }
 
+// InternalExternalConfig is read from the internalExternal config section in the project config file.
+// It's meant for internal use and is not documented. These settings can be changed at any time and may be removed without notice.
+type InternalExternalConfig struct {
+	// Used by the Hugo theme site's check command to allow us to build TailwindCSS sites with default security config without errors.
+	IgnoreTailwindCSSSecurityError bool
+}
+
 // All non-params config keys for language.
 var configLanguageKeys map[string]bool
 
@@ -102,6 +109,8 @@ func init() {
 type Config struct {
 	// For internal use only.
 	Internal InternalConfig `mapstructure:"-" json:"-"`
+	// For internal use only.
+	InternalExternal InternalExternalConfig `mapstructure:"-" json:"-"`
 	// For internal use only.
 	C               *ConfigCompiled `mapstructure:"-" json:"-"`
 	isLanguageClone bool
@@ -181,7 +190,7 @@ type Config struct {
 	Minify minifiers.MinifyConfig `mapstructure:"-"`
 
 	// Permalink configuration.
-	Permalinks map[string]map[string]string `mapstructure:"-"`
+	Permalinks page.PermalinksConfig `mapstructure:"-"`
 
 	// Taxonomy configuration.
 	Taxonomies map[string]string `mapstructure:"-"`
@@ -326,9 +335,10 @@ func (c *Config) CompileConfig(logger loggers.Logger) error {
 	if c.DefaultOutputFormat != "" {
 		f, found := outputFormats.GetByName(c.DefaultOutputFormat)
 		if !found {
-			return fmt.Errorf("unknown default output format %q", c.DefaultOutputFormat)
+			transientErr = fmt.Errorf("unknown default output format %q", c.DefaultOutputFormat)
+		} else {
+			defaultOutputFormat = f
 		}
-		defaultOutputFormat = f
 	} else {
 		c.DefaultOutputFormat = defaultOutputFormat.Name
 	}
@@ -345,6 +355,10 @@ func (c *Config) CompileConfig(logger loggers.Logger) error {
 	ignoredLogIDs := make(map[string]bool)
 	for _, err := range c.IgnoreLogs {
 		ignoredLogIDs[err] = true
+	}
+
+	if c.BaseURL == "" {
+		c.BaseURL = "https://example.org/"
 	}
 
 	baseURL, err := urls.NewBaseURLFromString(c.BaseURL)
@@ -456,35 +470,6 @@ func (c *Config) CompileConfig(logger loggers.Logger) error {
 				break
 			}
 		}
-	}
-
-	// Legacy privacy values.
-	if c.Privacy.Twitter.Disable {
-		hugo.DeprecateWithLogger("project config key privacy.twitter.disable", "Use privacy.x.disable instead.", "v0.141.0", logger.Logger())
-		c.Privacy.X.Disable = c.Privacy.Twitter.Disable
-	}
-	if c.Privacy.Twitter.EnableDNT {
-		hugo.DeprecateWithLogger("project config key privacy.twitter.enableDNT", "Use privacy.x.enableDNT instead.", "v0.141.0", logger.Logger())
-		c.Privacy.X.EnableDNT = c.Privacy.Twitter.EnableDNT
-	}
-	if c.Privacy.Twitter.Simple {
-		hugo.DeprecateWithLogger("project config key privacy.twitter.simple", "Use privacy.x.simple instead.", "v0.141.0", logger.Logger())
-		c.Privacy.X.Simple = c.Privacy.Twitter.Simple
-	}
-
-	// Legacy services values.
-	if c.Services.Twitter.DisableInlineCSS {
-		hugo.DeprecateWithLogger("project config key services.twitter.disableInlineCSS", "Use services.x.disableInlineCSS instead.", "v0.141.0", logger.Logger())
-		c.Services.X.DisableInlineCSS = c.Services.Twitter.DisableInlineCSS
-	}
-
-	// Legacy permalink tokens
-	vs := fmt.Sprintf("%v", c.Permalinks)
-	if strings.Contains(vs, ":filename") {
-		hugo.DeprecateWithLogger("the \":filename\" permalink token", "Use \":contentbasename\" instead.", "0.144.0", logger.Logger())
-	}
-	if strings.Contains(vs, ":slugorfilename") {
-		hugo.DeprecateWithLogger("the \":slugorfilename\" permalink token", "Use \":slugorcontentbasename\" instead.", "0.144.0", logger.Logger())
 	}
 
 	// Legacy render hook values.
@@ -613,7 +598,7 @@ func (c *ConfigCompiled) SetServerInfo(baseURL, baseURLLiveReload urls.BaseURL, 
 // RootConfig holds all the top-level configuration options in Hugo
 type RootConfig struct {
 	// The base URL of the site.
-	// Note that the default value is empty, but Hugo requires a valid URL (e.g. "https://example.com/") to work properly.
+	// It defaults to https://example.org/
 	// <docsmeta>{"identifiers": ["URL"] }</docsmeta>
 	BaseURL string
 
@@ -803,10 +788,6 @@ type RootConfig struct {
 
 	// Don't sync modification time of files for the static mounts.
 	NoChmod bool
-
-	// Clean the destination folder before a new build.
-	// This currently only handles static files.
-	CleanDestinationDir bool
 
 	// A Glob pattern of module paths to ignore in the _vendor folder.
 	IgnoreVendorPaths string
@@ -1034,29 +1015,30 @@ func (c Configs) GetByLang(lang string) config.AllProvider {
 
 func newDefaultConfig() *Config {
 	return &Config{
-		Taxonomies: map[string]string{"tag": "tags", "category": "categories"},
-		Sitemap:    config.SitemapConfig{Priority: -1, Filename: "sitemap.xml"},
-		RootConfig: RootConfig{
-			Environment:          hugo.EnvironmentProduction,
-			TitleCaseStyle:       "AP",
-			PluralizeListTitles:  true,
-			CapitalizeListTitles: true,
-			StaticDir:            []string{"static"},
-			SummaryLength:        70,
-			Timeout:              "60s",
+		Taxonomies:           map[string]string{"tag": "tags", "category": "categories"},
+		Sitemap:              config.SitemapConfig{Priority: -1, Filename: "sitemap.xml"},
+		Environment:          hugo.EnvironmentProduction,
+		TitleCaseStyle:       "AP",
+		PluralizeListTitles:  true,
+		CapitalizeListTitles: true,
+		StaticDir:            []string{"static"},
+		SummaryLength:        70,
+		Timeout:              "60s",
 
-			CommonDirs: config.CommonDirs{
-				ArcheTypeDir: "archetypes",
-				ContentDir:   "content",
-				ResourceDir:  "resources",
-				PublishDir:   "public",
-				ThemesDir:    "themes",
-				AssetDir:     "assets",
-				LayoutDir:    "layouts",
-				I18nDir:      "i18n",
-				DataDir:      "data",
-			},
-		},
+		//lint:ignore SA1019 Keep as adapter for now.
+		ArcheTypeDir: "archetypes",
+		ContentDir:   "content",
+		ResourceDir:  "resources",
+		PublishDir:   "public",
+		ThemesDir:    "themes",
+		//lint:ignore SA1019 Keep as adapter for now.
+		AssetDir: "assets",
+		//lint:ignore SA1019 Keep as adapter for now.
+		LayoutDir: "layouts",
+		//lint:ignore SA1019 Keep as adapter for now.
+		I18nDir: "i18n",
+		//lint:ignore SA1019 Keep as adapter for now.
+		DataDir: "data",
 	}
 }
 

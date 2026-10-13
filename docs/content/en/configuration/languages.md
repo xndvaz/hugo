@@ -1,14 +1,14 @@
 ---
 title: Configure languages
 linkTitle: Languages
-description: Configure the languages in your multilingual site.
+description: Configure the languages in your multilingual project.
 categories: []
 keywords: []
 ---
 
 ## Base settings
 
-Configure the following base settings within the site's root configuration:
+Configure the following base settings:
 
 {{< code-toggle file=hugo >}}
 defaultContentLanguage = 'en'
@@ -17,17 +17,17 @@ disableDefaultLanguageRedirect = false
 disableLanguages = []
 {{< /code-toggle >}}
 
-defaultContentLanguage
-: (`string`) The projects's default content language, conforming to the syntax described in [RFC 5646][]. This value must match one of the defined [language keys][]. Default is `en`.
+`defaultContentLanguage`
+: (`string`) The project's [default language](g), conforming to the syntax described in [RFC 5646][]. When one or more languages are defined, this value must match one of the defined [language keys][].
 
-defaultContentLanguageInSubdir
-: (`bool`) Whether to publish the default content language to a subdirectory matching the [`defaultContentLanguage`][]. Default is `false`.
+`defaultContentLanguageInSubdir`
+: (`bool`) Whether to publish the default content language to a subdirectory matching the [`defaultContentLanguage`](#defaultcontentlanguage). Default is `false`.
 
-disableDefaultLanguageRedirect
+`disableDefaultLanguageRedirect`
 : {{< new-in 0.140.0 />}}
-: (`bool`) Whether to disable generation of the alias redirect for the default content language. When [`defaultContentLanguageInSubdir`][] is `true`, this setting prevents the root directory from redirecting to the language subdirectory. Conversely, when `defaultContentLanguageInSubdir` is `false`, this setting prevents the language subdirectory from redirecting to the root directory. This is superseded by the more general [`disableDefaultSiteRedirect`][] setting. Default is `false`.
+: (`bool`) Whether to disable generation of the alias redirect for the default content language. When [`defaultContentLanguageInSubdir`](#defaultcontentlanguageinsubdir) is `true`, this setting prevents the root directory from redirecting to the language subdirectory. Conversely, when `defaultContentLanguageInSubdir` is `false`, this setting prevents the language subdirectory from redirecting to the root directory. This is superseded by the more general [`disableDefaultSiteRedirect`][] setting. Default is `false`.
 
-disableLanguages
+`disableLanguages`
 : (`[]string]`) A slice of language keys representing the languages to disable during the build process. Although this is functional, consider using the [`disabled`](#disabled) key under each language instead.
 
 ## Language settings
@@ -38,34 +38,34 @@ Configure each language under the `languages` key:
 
 In the above, `en` is the [language key](#language-keys).
 
-disabled
+`direction`
+: (`string`) The language direction, either left-to-right (`ltr`) or right-to-left (`rtl`). Use this value in your templates with the global [`dir`][] HTML attribute. Access this value from a template using the [`Language.Direction`][] method on a `Site` or `Page` object. Default is `ltr`.
+
+`disabled`
 : (`bool`) Whether to disable this language when building the site. Default is `false`.
 
-languageCode
-: (`string`) The language tag as described in [RFC 5646][]. This is the primary value used by the [`language.Translate`][] function to select a translation table, falling back to the language key if a matching translation table does not exist.
+`label`
+: (`string`) The language name, typically used when rendering a language switcher. Access this value from a template using the [`Language.Label`][] method on a `Site` or `Page` object.
 
-  Hugo also uses this value to populate:
+`languageCode`
+: {{<deprecated-in 0.158.0 />}}
+: Use [`locale`](#locale) instead.
 
-  - The `lang` attribute of the `html` element in the [embedded alias template][]
-  - The `language` element in the [embedded RSS template][]
-  - The `locale` property in the [embedded OpenGraph template][]
+`languageDirection`
+: {{<deprecated-in 0.158.0 />}}
+: Use [`direction`](#direction) instead.
 
-  > [!note]
-  > This value does not affect localization of dates, numbers, and currencies, nor does it affect the site's URL structure. These are controlled by the [language key](#language-keys).
+`languageName`
+: {{<deprecated-in 0.158.0 />}}
+: Use [`label`](#label) instead.
 
-  Access this value from a template using the [`Language.LanguageCode`][] method on a `Site` or `Page` object.
+{{% include "/_common/configuration/locale.md" %}}
 
-languageDirection
-: (`string`) The language direction, either left-to-right (`ltr`) or right-to-left (`rtl`). Use this value in your templates with the global [`dir`][] HTML attribute. Access this value from a template using the [`Language.LanguageDirection`][] method on a `Site` or `Page` object. Default is `ltr`.
-
-languageName
-: (`string`) The language name, typically used when rendering a language switcher. Access this value from a template using the [`Language.LanguageName`][] method on a `Site` or `Page` object.
-
-title
+`title`
 : (`string`) The site title for this language. Access this value from a template using the [`Title`][] method on a `Site` object.
 
-weight
-: (`int`) The language [weight](g). When set to a non-zero value, this is the primary sort criteria for this language. Access this value from a template using the [`Language.Weight`][] method on a `Site` or `Page` object.
+`weight`
+: (`int`) The language [weight](g). When set to a non-zero value, this is the primary sort criteria for this language.
 
 ## Sort order
 
@@ -77,11 +77,11 @@ Some configuration settings can be defined separately for each language. For exa
 
 {{< code-toggle file=hugo >}}
 [languages.en]
-languageCode = 'en-US'
-languageName = 'English'
-weight = 1
-title = 'Project Documentation'
+label = 'English'
+locale = 'en-US'
 timeZone = 'America/New_York'
+title = 'Project Documentation'
+weight = 1
 [languages.en.pagination]
 path = 'page'
 [languages.en.params]
@@ -101,11 +101,11 @@ Language keys must conform to the syntax described in [RFC 5646][]. For example:
 {{< code-toggle file=hugo >}}
 defaultContentLanguage = 'de'
 [languages.de]
-  weight = 1
+weight = 1
 [languages.en-US]
-  weight = 2
+weight = 2
 [languages.pt-BR]
-  weight = 3
+weight = 3
 {{< /code-toggle >}}
 
 Artificial languages with private use subtags as defined in [RFC 5646 § 2.2.7][] are also supported. Omit the `art-x-` prefix from the language key. For example:
@@ -118,7 +118,7 @@ weight = 1
 weight = 2
 {{< /code-toggle >}}
 
-> [!note]
+> [!NOTE]
 > Private use subtags must not exceed 8 alphanumeric characters.
 
 ## Example
@@ -130,10 +130,10 @@ disableDefaultLanguageRedirect = false
 
 [languages.de]
 contentDir = 'content/de'
+direction = 'ltr'
 disabled = false
-languageCode = 'de-DE'
-languageDirection = 'ltr'
-languageName = 'Deutsch'
+label = 'Deutsch'
+locale = 'de-DE'
 title = 'Projekt Dokumentation'
 weight = 1
 
@@ -142,10 +142,10 @@ subtitle = 'Referenz, Tutorials und Erklärungen'
 
 [languages.en]
 contentDir = 'content/en'
+direction = 'ltr'
 disabled = false
-languageCode = 'en-US'
-languageDirection = 'ltr'
-languageName = 'English'
+label = 'English'
+locale = 'en-US'
 title = 'Project Documentation'
 weight = 2
 
@@ -153,55 +153,46 @@ weight = 2
 subtitle = 'Reference, Tutorials, and Explanations'
 {{< /code-toggle >}}
 
-> [!note]
+> [!NOTE]
 > In the example above, omit `contentDir` if [translating by file name][].
 
 ## Multihost
 
 Hugo supports multiple languages in a multihost configuration. This means you can configure a `baseURL` per `language`.
 
-> [!note]
+> [!NOTE]
 > If you define a `baseURL` for one language, you must define a unique `baseURL` for all languages.
 
 For example:
 
 {{< code-toggle file=hugo >}}
 defaultContentLanguage = 'fr'
-[languages]
-  [languages.en]
-    baseURL = 'https://en.example.org/'
-    languageName = 'English'
-    title = 'In English'
-    weight = 2
-  [languages.fr]
-    baseURL = 'https://fr.example.org'
-    languageName = 'Français'
-    title = 'En Français'
-    weight = 1
+[languages.en]
+baseURL = 'https://en.example.org/'
+label = 'English'
+title = 'In English'
+weight = 2
+[languages.fr]
+baseURL = 'https://fr.example.org'
+label = 'Français'
+title = 'En Français'
+weight = 1
 {{</ code-toggle >}}
 
 With the above, Hugo publishes two sites, each with their own root:
 
-```text
+```tree
 public
 ├── en
 └── fr
 ```
 
-[`defaultContentLanguage`]: #defaultcontentlanguage
-[`defaultContentLanguageInSubdir`]: #defaultcontentlanguageinsubdir
-[`dir`]: https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/dir
-[`disableDefaultSiteRedirect`]: /configuration/all/#disabledefaultsiteredirect
-[`Language.LanguageCode`]: /methods/site/language/#languagecode
-[`Language.LanguageDirection`]: /methods/site/language/#languagedirection
-[`Language.LanguageName`]: /methods/site/language/#languagename
-[`language.Translate`]: /functions/lang/translate/
-[`Language.Weight`]: /methods/site/language/#weight
-[`Title`]: /methods/site/title/
-[embedded alias template]: <{{% eturl alias %}}>
-[embedded OpenGraph template]: <{{% eturl opengraph %}}>
-[embedded RSS template]: <{{% eturl rss %}}>
-[language keys]: #language-keys
 [RFC 5646 § 2.2.7]: https://datatracker.ietf.org/doc/html/rfc5646#section-2.2.7
 [RFC 5646]: https://datatracker.ietf.org/doc/html/rfc5646#section-2.1
+[`Language.Direction`]: /methods/site/language/#direction
+[`Language.Label`]: /methods/site/language/#label
+[`Title`]: /methods/site/title/
+[`dir`]: https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/dir
+[`disableDefaultSiteRedirect`]: /configuration/all/#disabledefaultsiteredirect
+[language keys]: /configuration/languages/#language-keys
 [translating by file name]: /content-management/multilingual/#translation-by-file-name

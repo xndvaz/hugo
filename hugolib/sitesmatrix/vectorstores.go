@@ -14,7 +14,6 @@
 package sitesmatrix
 
 import (
-	"cmp"
 	"fmt"
 	"iter"
 	"maps"
@@ -209,14 +208,43 @@ func (s *vectorStoreMap) Vectors() []Vector {
 	return vectors
 }
 
-func (s *vectorStoreMap) WithLanguageIndices(i int) VectorStore {
+func (s *vectorStoreMap) WithLanguageIndices(i ...int) VectorStore {
 	c := s.clone()
 
 	for v := range c.sets {
-		v[Language] = i
-		c.sets[v] = struct{}{}
+		for _, i := range i {
+			nv := v
+			nv[Language] = i
+			c.sets[nv] = struct{}{}
+		}
 	}
 
+	return c
+}
+
+func (s *vectorStoreMap) WithVersionIndices(indices ...int) VectorStore {
+	old := s.clone()
+	c := newVectorStoreMap(len(old.sets) * len(indices))
+	for v := range old.sets {
+		for _, i := range indices {
+			nv := v
+			nv[Version] = i
+			c.sets[nv] = struct{}{}
+		}
+	}
+	return c
+}
+
+func (s *vectorStoreMap) WithRoleIndices(indices ...int) VectorStore {
+	old := s.clone()
+	c := newVectorStoreMap(len(old.sets) * len(indices))
+	for v := range old.sets {
+		for _, i := range indices {
+			nv := v
+			nv[Role] = i
+			c.sets[nv] = struct{}{}
+		}
+	}
 	return c
 }
 
@@ -589,10 +617,24 @@ func (s IntSets) shallowClone() *IntSets {
 	return &s
 }
 
-// WithLanguageIndices replaces the current language set with a single language index.
-func (s *IntSets) WithLanguageIndices(i int) VectorStore {
+// WithLanguageIndices replaces the current language set with the given language indices.
+func (s *IntSets) WithLanguageIndices(indices ...int) VectorStore {
 	c := s.shallowClone()
-	c.languages = hmaps.NewOrderedIntSet(i)
+	c.languages = hmaps.NewOrderedIntSet(indices...)
+	return c.init()
+}
+
+// WithVersionIndices replaces the current version set with the given version indices.
+func (s *IntSets) WithVersionIndices(indices ...int) VectorStore {
+	c := s.shallowClone()
+	c.versions = hmaps.NewOrderedIntSet(indices...)
+	return c.init()
+}
+
+// WithRoleIndices replaces the current role set with the given role indices.
+func (s *IntSets) WithRoleIndices(indices ...int) VectorStore {
+	c := s.shallowClone()
+	c.roles = hmaps.NewOrderedIntSet(indices...)
 	return c.init()
 }
 
@@ -737,7 +779,7 @@ func (b *IntSetsBuilder) Build() *IntSets {
 }
 
 func (b *IntSetsBuilder) WithConfig(cfg IntSetsConfig) *IntSetsBuilder {
-	applyFilter := func(what string, values []string, matcher ConfiguredDimension) (*hmaps.OrderedIntSet, error) {
+	applyFilter := func(what string, values []string, matcher ConfiguredDimension) *hmaps.OrderedIntSet {
 		var result *hmaps.OrderedIntSet
 		if len(values) == 0 {
 
@@ -757,16 +799,16 @@ func (b *IntSetsBuilder) WithConfig(cfg IntSetsConfig) *IntSetsBuilder {
 				}
 			}
 
-			return result, nil
+			return result
 		}
 
 		filter, err := predicate.NewIndexStringPredicateFromGlobsAndRanges(values, matcher.ResolveIndex, hglob.GetGlobDot)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create filter for %s: %w", what, err)
+			panic(fmt.Errorf("failed to create filter for %s: %w", what, err))
 		}
 		iter, err := matcher.IndexMatch(filter)
 		if err != nil {
-			return nil, fmt.Errorf("failed to match %s %q: %w", what, values, err)
+			panic(fmt.Errorf("failed to match %s %q: %w", what, values, err))
 		}
 		for i := range iter {
 			if result == nil {
@@ -775,16 +817,12 @@ func (b *IntSetsBuilder) WithConfig(cfg IntSetsConfig) *IntSetsBuilder {
 			result.Set(i)
 		}
 
-		return result, nil
+		return result
 	}
 
-	l, err1 := applyFilter("languages", cfg.Globs.Languages, b.cfg.ConfiguredLanguages)
-	v, err2 := applyFilter("versions", cfg.Globs.Versions, b.cfg.ConfiguredVersions)
-	r, err3 := applyFilter("roles", cfg.Globs.Roles, b.cfg.ConfiguredRoles)
-
-	if err := cmp.Or(err1, err2, err3); err != nil {
-		panic(fmt.Errorf("failed to apply filters: %w", err))
-	}
+	l := applyFilter("languages", cfg.Globs.Languages, b.cfg.ConfiguredLanguages)
+	v := applyFilter("versions", cfg.Globs.Versions, b.cfg.ConfiguredVersions)
+	r := applyFilter("roles", cfg.Globs.Roles, b.cfg.ConfiguredRoles)
 
 	b.GlobFilterMisses = Bools{
 		len(cfg.Globs.Languages) > 0 && l == nil,
@@ -808,6 +846,32 @@ func (s *IntSetsBuilder) WithLanguageIndices(idxs ...int) *IntSetsBuilder {
 	}
 	for _, i := range idxs {
 		s.s.languages.Set(i)
+	}
+	return s
+}
+
+func (s *IntSetsBuilder) WithVersionIndices(idxs ...int) *IntSetsBuilder {
+	if len(idxs) == 0 {
+		return s
+	}
+	if s.s.versions == nil {
+		s.s.versions = hmaps.NewOrderedIntSet()
+	}
+	for _, i := range idxs {
+		s.s.versions.Set(i)
+	}
+	return s
+}
+
+func (s *IntSetsBuilder) WithRoleIndices(idxs ...int) *IntSetsBuilder {
+	if len(idxs) == 0 {
+		return s
+	}
+	if s.s.roles == nil {
+		s.s.roles = hmaps.NewOrderedIntSet()
+	}
+	for _, i := range idxs {
+		s.s.roles.Set(i)
 	}
 	return s
 }

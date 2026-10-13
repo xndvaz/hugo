@@ -122,7 +122,7 @@ Content: {{ .Content }}
 `
 
 	b := hugolib.Test(t, files)
-	b.AssertFileContent("public/index.html", "35b077dcb9887a84")
+	b.AssertFileContent("public/index.html", "c18e12c59a2f9bdb")
 }
 
 func TestHighlightShortcode(t *testing.T) {
@@ -237,12 +237,12 @@ Content: {{ .Content }}
 
 	// Regular mode
 	b := hugolib.Test(t, files)
-	b.AssertFileContent("public/index.html", "6e93404b93277876")
+	b.AssertFileContent("public/index.html", "336bb64b13c24575")
 
 	// Simple mode
 	files = strings.ReplaceAll(files, "privacy.instagram.simple = false", "privacy.instagram.simple = true")
 	b = hugolib.Test(t, files)
-	b.AssertFileContent("public/index.html", "2c1dce3881be0513")
+	b.AssertFileContent("public/index.html", "4c094707f37b2340")
 }
 
 func TestParamShortcode(t *testing.T) {
@@ -469,14 +469,14 @@ Content: {{ .Content }}
 
 	// Regular mode
 	b := hugolib.Test(t, files)
-	b.AssertFileContent("public/p1/index.html", "31c54d7f8c54f73d")
-	b.AssertFileContent("public/p2/index.html", "31c54d7f8c54f73d")
-	b.AssertFileContent("public/p3/index.html", "7c073565f380599b")
+	b.AssertFileContent("public/p1/index.html", "2144844b57ee39d8")
+	b.AssertFileContent("public/p2/index.html", "2144844b57ee39d8")
+	b.AssertFileContent("public/p3/index.html", "a131e93ce53bc318")
 
 	// Simple mode
 	files = strings.ReplaceAll(files, "privacy.vimeo.simple = false", "privacy.vimeo.simple = true")
 	b = hugolib.Test(t, files)
-	b.AssertFileContent("public/p1/index.html", "fb22905d5b100a5a")
+	b.AssertFileContent("public/p1/index.html", "582bde2225dc43c0")
 
 	// Simple mode with non-existent id
 	files = strings.ReplaceAll(files, "{{< vimeo 19899678 >}}", "{{< vimeo __id_does_not_exist__ >}}")
@@ -510,12 +510,12 @@ title: p2
 	b := hugolib.Test(t, files)
 
 	// Test x shortcode
-	want := `<blockquote class="twitter-tweet"><p lang="en" dir="ltr">Owl bet you&#39;ll lose this staring contest 🦉 <a href="https://t.co/eJh4f2zncC">pic.twitter.com/eJh4f2zncC</a></p>&mdash; San Diego Zoo Wildlife Alliance (@sandiegozoo) <a href="https://twitter.com/sandiegozoo/status/1453110110599868418?ref_src=twsrc%5Etfw">October 26, 2021</a></blockquote>
-	<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`
+	want := `<blockquote class="twitter-tweet"><p lang="en" dir="ltr">Owl bet you&#39;ll lose this staring contest 🦉 <a href="https://t.co/eJh4f2zncC">pic.twitter.com/eJh4f2zncC</a></p>&mdash; San Diego Zoo Wildlife Alliance (@sandiegozoo) <a href="https://x.com/sandiegozoo/status/1453110110599868418?ref_src=twsrc%5Etfw">October 26, 2021</a></blockquote>
+<script async src="https://platform.x.com/widgets.js" charset="utf-8"></script>`
 	b.AssertFileContent("public/p1/index.html", want)
 
 	// Test x_simple shortcodes
-	wantSimple := "<style type=\"text/css\">\n      .twitter-tweet {\n        font:\n          14px/1.45 -apple-system,\n          BlinkMacSystemFont,\n          \"Segoe UI\",\n          Roboto,\n          Oxygen-Sans,\n          Ubuntu,\n          Cantarell,\n          \"Helvetica Neue\",\n          sans-serif;\n        border-left: 4px solid #2b7bb9;\n        padding-left: 1.5em;\n        color: #555;\n      }\n      .twitter-tweet a {\n        color: #2b7bb9;\n        text-decoration: none;\n      }\n      blockquote.twitter-tweet a:hover,\n      blockquote.twitter-tweet a:focus {\n        text-decoration: underline;\n      }\n    </style><blockquote class=\"twitter-tweet\"><p lang=\"en\" dir=\"ltr\">Owl bet you&#39;ll lose this staring contest 🦉 <a href=\"https://t.co/eJh4f2zncC\">pic.twitter.com/eJh4f2zncC</a></p>&mdash; San Diego Zoo Wildlife Alliance (@sandiegozoo) <a href=\"https://twitter.com/sandiegozoo/status/1453110110599868418?ref_src=twsrc%5Etfw\">October 26, 2021</a></blockquote>\n--"
+	wantSimple := "<style type=\"text/css\">\n      .twitter-tweet {\n        font:\n          14px/1.45 -apple-system,\n          BlinkMacSystemFont,\n          \"Segoe UI\",\n          Roboto,\n          Oxygen-Sans,\n          Ubuntu,\n          Cantarell,\n          \"Helvetica Neue\",\n          sans-serif;\n        border-left: 4px solid #2b7bb9;\n        padding-left: 1.5em;\n        color: #555;\n      }\n      .twitter-tweet a {\n        color: #2b7bb9;\n        text-decoration: none;\n      }\n      blockquote.twitter-tweet a:hover,\n      blockquote.twitter-tweet a:focus {\n        text-decoration: underline;\n      }\n    </style><blockquote class=\"twitter-tweet\"><p lang=\"en\" dir=\"ltr\">Owl bet you&#39;ll lose this staring contest 🦉 <a href=\"https://t.co/eJh4f2zncC\">pic.twitter.com/eJh4f2zncC</a></p>&mdash; San Diego Zoo Wildlife Alliance (@sandiegozoo) <a href=\"https://x.com/sandiegozoo/status/1453110110599868418?ref_src=twsrc%5Etfw\">October 26, 2021</a></blockquote>\n--"
 	b.AssertFileContent("public/p2/index.html", wantSimple)
 
 	// Test privacy.x.simple
@@ -587,14 +587,14 @@ title: p2
 
 	b := hugolib.Test(t, files)
 
-	b.AssertFileContent("public/p1/index.html", "4b54bf9bd03946ec")
-	b.AssertFileContent("public/p2/index.html", "289c655e727e596c")
+	b.AssertFileContent("public/p1/index.html", "365fe481b0377cd9")
+	b.AssertFileContent("public/p2/index.html", "82d7f05fb1fefb3b")
 
 	files = strings.ReplaceAll(files, "privacy.youtube.privacyEnhanced = false", "privacy.youtube.privacyEnhanced = true")
 
 	b = hugolib.Test(t, files)
-	b.AssertFileContent("public/p1/index.html", "78eb19b5c6f3768f")
-	b.AssertFileContent("public/p2/index.html", "a6db910a9cf54bc1")
+	b.AssertFileContent("public/p1/index.html", "48398992f5ff0afc")
+	b.AssertFileContent("public/p2/index.html", "116436ffc3f62191")
 }
 
 func TestShortcodePlainTextVsHTMLTemplateIssue13698(t *testing.T) {

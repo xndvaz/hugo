@@ -1,6 +1,6 @@
 ---
 title: fmt.Warnidf
-description: Log a suppressible WARNING from a template.
+description: Logs a suppressible WARNING from a template.
 categories: []
 keywords: []
 params:
@@ -8,12 +8,11 @@ params:
     aliases: [warnidf]
     returnType: string
     signatures: ['fmt.Warnidf ID FORMAT [INPUT]']
-aliases: [/functions/warnidf]
 ---
 
 {{% include "/_common/functions/fmt/format-string.md" %}}
 
-The `warnidf` function evaluates the format string, then prints the result to the WARNING log. Unlike the [`warnf`] function, you may suppress warnings logged by the `warnidf` function by adding the message ID to the `ignoreLogs` array in your project configuration.
+The `warnidf` function evaluates the format string, then prints the result to the WARNING log. Unlike the [`warnf`][] function, you may suppress warnings logged by the `warnidf` function by adding the message ID to the `ignoreLogs` array in your project configuration.
 
 This template code:
 

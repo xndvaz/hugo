@@ -8,7 +8,6 @@ params:
     aliases: [last]
     returnType: 'any'
     signatures: [collections.Last N SLICE|STRING]
-aliases: [/functions/last]
 ---
 
 ```go-html-template
@@ -47,10 +46,10 @@ Set `N` to zero to return an empty slice:
 
 Use `last` and [`where`][] together:
 
-[`where`]: /functions/collections/where/
-
 ```go-html-template
 {{ range where .Pages "Section" "articles" | last 5 }}
   {{ .Render "summary" }}
 {{ end }}
 ```
+
+[`where`]: /functions/collections/where/

@@ -17,23 +17,23 @@ params:
 With this project configuration:
 
 {{< code-toggle file=hugo >}}
-defaultContentLanguage = 'de'
+defaultContentLanguage = 'en'
 defaultContentLanguageInSubdir = true
 defaultContentVersionInSubdir = true
 
 [languages.de]
 contentDir = 'content/de'
-languageCode = 'de-DE'
-languageDirection = 'ltr'
-languageName = 'Deutsch'
+direction = 'ltr'
+label = 'Deutsch'
+locale = 'de-DE'
 title = 'Projekt Dokumentation'
 weight = 1
 
 [languages.en]
 contentDir = 'content/en'
-languageCode = 'en-US'
-languageDirection = 'ltr'
-languageName = 'English'
+direction = 'ltr'
+label = 'English'
+locale = 'en-US'
 title = 'Project Documentation'
 weight = 2
 
@@ -73,10 +73,6 @@ To render a link to the home page of the [default site](g):
 {{ end }}
 ```
 
-This is equivalent to:
+With the configuration above, this renders a link to the home page of the English version v3.0.0 site. The default site is the site with the [default language](g), [default version](g), and [default role](g), regardless of its position in the collection. In this example the three German sites appear first due to their lower language weight, but English is the default language per the [`defaultContentLanguage`][] setting.
 
-```go-html-template
-{{ with index hugo.Sites 0 }}
-  <a href="{{ .Home.RelPermalink }}">{{ .Title }}</a>
-{{ end }}
-```
+[`defaultContentLanguage`]: /configuration/all/#defaultcontentlanguage

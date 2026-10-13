@@ -8,7 +8,6 @@ params:
     aliases: [sort]
     returnType: any
     signatures: ['collections.Sort MAP|SLICE [KEY] [ORDER]']
-aliases: [/functions/sort]
 ---
 
 The `KEY` is optional when sorting slices in ascending order, otherwise it is required. When sorting slices, use the literal `value` in place of the `KEY`. See examples below.
@@ -51,17 +50,17 @@ The examples below assume this project configuration:
 
 {{< code-toggle file=hugo >}}
 [params.authors.a]
-firstName = "Marius"
-lastName  = "Pontmercy"
+firstName = 'Marius'
+lastName  = 'Pontmercy'
 [params.authors.b]
-firstName = "Victor"
-lastName  = "Hugo"
+firstName = 'Victor'
+lastName  = 'Hugo'
 [params.authors.c]
-firstName = "Jean"
-lastName  = "Valjean"
+firstName = 'Jean'
+lastName  = 'Valjean'
 {{< /code-toggle >}}
 
-> [!note]
+> [!NOTE]
 > When sorting maps, the `KEY` argument must be lowercase.
 
 ### Ascending order {#map-ascending-order}
@@ -136,8 +135,8 @@ After sorting:
 
 ## Sort a page collection
 
-> [!note]
-> Although you can use the `sort` function to sort a page collection, Hugo provides [sorting and grouping methods] as well.
+> [!NOTE]
+> Although you can use the `sort` function to sort a page collection, Hugo provides [sorting and grouping methods][] as well.
 
 In this contrived example, sort the site's regular pages by `.Type` in descending order:
 

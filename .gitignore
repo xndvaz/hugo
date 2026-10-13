@@ -5,3 +5,6 @@ dist/
 public/
 .DS_Store 
 cache/filecache/_gen/
+.claude/
+dump.txt
+dump.md

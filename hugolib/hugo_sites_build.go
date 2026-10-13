@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/bep/debounce"
+	"github.com/bep/helpers/maphelpers"
 	"github.com/bep/logg"
 	"github.com/gohugoio/go-radix"
 	"github.com/gohugoio/hugo/bufferpool"
@@ -60,7 +61,7 @@ import (
 
 // Build builds all sites. If filesystem events are provided,
 // this is considered to be a potential partial rebuild.
-func (h *HugoSites) Build(config BuildCfg, events ...fsnotify.Event) error {
+func (h *HugoSites) Build(config BuildCfg, events ...fsnotify.Event) (err error) {
 	if h.isRebuild() && !h.Conf.Watching() && !h.Conf.Running() {
 		return errors.New("Build called multiple times when not in watch or server mode (typically with hugolib.Test(t, files).Build(); Build() is already called once by Test)")
 	}
@@ -80,9 +81,7 @@ func (h *HugoSites) Build(config BuildCfg, events ...fsnotify.Event) error {
 	infol := h.Log.InfoCommand("build")
 	defer loggers.TimeTrackf(infol, time.Now(), nil, "")
 	defer func() {
-		h.reportProgress(func() (state terminal.ProgressState, progress float64) {
-			return terminal.ProgressHidden, 1.0
-		})
+		h.reportBuildEnd(err)
 		h.BuildState.BuildCounter.Add(1)
 	}()
 
@@ -232,7 +231,7 @@ func (h *HugoSites) Build(config BuildCfg, events ...fsnotify.Event) error {
 
 	h.StopErrorCollector()
 
-	err := <-errs
+	err = <-errs
 	if err != nil {
 		return err
 	}
@@ -692,7 +691,7 @@ func (h *HugoSites) postProcess(l logg.LevelLogger) error {
 	}
 
 	var toPostProcess []postpub.PostPublishedResource
-	for _, r := range h.ResourceSpec.PostProcessResources {
+	for _, r := range h.ResourceSpec.PostProcessResources.All() {
 		toPostProcess = append(toPostProcess, r)
 	}
 
@@ -758,7 +757,7 @@ func (h *HugoSites) postProcess(l logg.LevelLogger) error {
 
 	// Prepare for a new build.
 	for _, s := range h.Sites {
-		s.ResourceSpec.PostProcessResources = make(map[string]postpub.PostPublishedResource)
+		s.ResourceSpec.PostProcessResources = maphelpers.NewConcurrentMap[string, postpub.PostPublishedResource]()
 	}
 
 	return g.Wait()
@@ -778,6 +777,23 @@ func (h *HugoSites) writeBuildStats() error {
 		htmlElements.Merge(stats.HTMLElements)
 	}
 
+	filename := filepath.Join(h.Configs.LoadingInfo.BaseConfig.WorkingDir, files.FilenameHugoStatsJSON)
+
+	existingContent, _ := afero.ReadFile(hugofs.Os, filename)
+
+	// When rendering only a subset of the site, merge with any existing
+	// hugo_stats.json so that elements from pages not rendered in this build
+	// are preserved (e.g. so Tailwind doesn't strip their classes).
+	// See issue 14939.
+	if len(h.Configs.Base.RenderSegments) > 0 && len(existingContent) > 0 {
+		var existing publisher.PublishStats
+		if err := json.Unmarshal(existingContent, &existing); err == nil {
+			htmlElements.Merge(existing.HTMLElements)
+		} else {
+			h.Log.Warnf("Failed to unmarshal existing hugo_stats.json: %s", err)
+		}
+	}
+
 	htmlElements.Sort()
 
 	stats := publisher.PublishStats{
@@ -794,13 +810,8 @@ func (h *HugoSites) writeBuildStats() error {
 	}
 	js := buf.Bytes()
 
-	filename := filepath.Join(h.Configs.LoadingInfo.BaseConfig.WorkingDir, files.FilenameHugoStatsJSON)
-
-	if existingContent, err := afero.ReadFile(hugofs.Os, filename); err == nil {
-		// Check if the content has changed.
-		if bytes.Equal(existingContent, js) {
-			return nil
-		}
+	if bytes.Equal(existingContent, js) {
+		return nil
 	}
 
 	// Make sure it's always written to the OS fs.
@@ -885,8 +896,9 @@ func (h *HugoSites) processPartialFileEvents(ctx context.Context, l logg.LevelLo
 		seen := make(map[string]bool)
 		var filtered []*paths.Path
 		for _, p := range ps {
-			if !seen[p.Path()] {
-				seen[p.Path()] = true
+			key := p.Component() + p.Path()
+			if !seen[key] {
+				seen[key] = true
 				filtered = append(filtered, p)
 			}
 		}
@@ -1067,6 +1079,8 @@ func (h *HugoSites) processPartialFileEvents(ctx context.Context, l logg.LevelLo
 			changes = append(changes, identity.GenghisKhan)
 		case files.ComponentFolderArchetypes:
 			// Ignore for now.
+		case files.ComponentFolderStatic:
+			// Handled by the static file syncer.
 		default:
 			panic(fmt.Sprintf("unknown component: %q", pathInfo.Component()))
 		}

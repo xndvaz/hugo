@@ -48,7 +48,7 @@ func newPageOutput(
 	var paginatorProvider page.PaginatorProvider
 	var pag *pagePaginator
 
-	if render && ps.IsNode() {
+	if render && ps.IsBranch() {
 		pag = newPagePaginator(ps)
 		paginatorProvider = pag
 	} else {
@@ -86,7 +86,7 @@ func newPageOutput(
 type pageOutput struct {
 	p *pageState
 
-	// Set if this page isn't configured to be rendered to this format.
+	// Set if this page is configured to be rendered to this format.
 	render bool
 
 	f output.Format
@@ -140,13 +140,18 @@ func (po *pageOutput) Aliases() []string {
 
 		a = path.Join(baseDir, a)
 
-		if conf.C.IsUglyURLSection(p.Section()) && !strings.HasSuffix(a, ".html") {
-			a += ".html"
+		if conf.C.IsUglyURLSection(p.Section()) && !pathHasOutputFormatSuffix(a, f) {
+			a += f.MediaType.FirstSuffix.FullSuffix
 		}
 
 		aliases[i] = a
 	}
 	return aliases
+}
+
+// Key returns a unique key for this page output, used to e.g. hashing.
+func (po *pageOutput) Key() string {
+	return po.p.Path() + po.f.Name
 }
 
 func (po *pageOutput) incrRenderState() {

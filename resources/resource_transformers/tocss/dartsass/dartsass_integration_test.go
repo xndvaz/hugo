@@ -14,10 +14,12 @@
 package dartsass_test
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/bep/logg"
 	qt "github.com/frankban/quicktest"
 	"github.com/gohugoio/hugo/common/herrors"
 	"github.com/gohugoio/hugo/htesting"
@@ -35,11 +37,14 @@ func TestTransformIncludePaths(t *testing.T) {
 -- assets/scss/main.scss --
 @import "moo";
 -- node_modules/foo/_moo.scss --
-$moolor: #fff;
+@import "sub/bar";
+$moolor: $barcolor;
 
 moo {
   color: $moolor;
 }
+-- node_modules/foo/sub/_bar.scss --
+$barcolor: #fff;
 -- hugo.toml --
 -- layouts/home.html --
 {{ $cssOpts := (dict "includePaths" (slice "node_modules/foo") "transpiler" "dartsass" ) }}
@@ -47,14 +52,38 @@ moo {
 T1: {{ $r.Content }}
 	`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		}).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", `T1: moo{color:#fff}`)
+}
+
+// See issue 15103.
+func TestTransformImportContext(t *testing.T) {
+	t.Parallel()
+	if !dartsass.Supports() {
+		t.Skip()
+	}
+
+	files := `
+-- hugo.toml --
+-- assets/scss/_foo.scss --
+body { color: orange; }
+-- assets/scss/main.scss --
+@import "foo";
+@import "bar";
+-- layouts/home.html --
+{{ $foo := resources.FromString "foo.scss" "body { color: blue; }" }}
+{{ $bar := resources.FromString "bar.scss" "@import \"baz\";\nbody { color: green; }" }}
+{{ $baz := resources.FromString "baz.scss" "p { color: red; }" }}
+{{ $opts := dict "transpiler" "dartsass" "outputStyle" "compressed" "importContext" (slice $foo $bar $baz) }}
+{{ $r := resources.Get "scss/main.scss" | css.Sass $opts }}
+T1: {{ $r.Content }}
+	`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+
+	// foo resolves in the import context before the assets filesystem.
+	b.AssertFileContent("public/index.html", `T1: body{color:blue}p{color:red}body{color:green}`)
 }
 
 func TestTransformImportRegularCSS(t *testing.T) {
@@ -88,13 +117,7 @@ T1: {{ $r.Content | safeHTML }}
 
 	`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		},
-	).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	// Dart Sass does not follow regular CSS import, but they
 	// get pulled to the top.
@@ -132,13 +155,7 @@ T1: {{ $r.Content | safeHTML }}
 
 	`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		},
-	).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", "T1: #main {\n  color: blue;\n}\n\n/* foo */")
 }
@@ -179,13 +196,7 @@ target = 'assets'
 source = 'foo'
 target = 'assets/foo'
 	`
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		},
-	).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", `
 		@import "import-this-file.css";
@@ -255,13 +266,7 @@ zoo {
 @import "components/imports";
 	`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		},
-	).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", `T1: moo{color:#ccc}boo{color:green}zoo{color:pink}`)
 }
@@ -285,13 +290,7 @@ disableKinds = ["term", "taxonomy", "section", "page"]
 T1: {{ $r.Content }}
 	`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-			LogLevel:    logg.LevelInfo,
-		}).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs(), hugolib.TestOptInfo())
 
 	b.AssertLogMatches(`Dart Sass: foo`)
 	b.AssertLogMatches(`Dart Sass: .*assets.*main.scss:1:0: bar`)
@@ -334,12 +333,7 @@ T1: {{ $r.Content }}
 	`
 
 	c.Run("error in main", func(c *qt.C) {
-		b, err := hugolib.NewIntegrationTestBuilder(
-			hugolib.IntegrationTestConfig{
-				T:           c,
-				TxtarString: strings.Replace(filesTemplate, "$maincolor: #eee;", "$maincolor #eee;", 1),
-				NeedsOsFS:   true,
-			}).BuildE()
+		b, err := hugolib.TestE(c, strings.Replace(filesTemplate, "$maincolor: #eee;", "$maincolor #eee;", 1), hugolib.TestOptOsFs())
 
 		b.Assert(err, qt.IsNotNil)
 		b.Assert(err.Error(), qt.Contains, `main.scss:8:13":`)
@@ -359,12 +353,7 @@ T1: {{ $r.Content }}
 	})
 
 	c.Run("error in import", func(c *qt.C) {
-		b, err := hugolib.NewIntegrationTestBuilder(
-			hugolib.IntegrationTestConfig{
-				T:           c,
-				TxtarString: strings.Replace(filesTemplate, "$foocolor: #ccc;", "$foocolor #ccc;", 1),
-				NeedsOsFS:   true,
-			}).BuildE()
+		b, err := hugolib.TestE(c, strings.Replace(filesTemplate, "$foocolor: #ccc;", "$foocolor #ccc;", 1), hugolib.TestOptOsFs())
 
 		b.Assert(err, qt.IsNotNil)
 		b.Assert(err.Error(), qt.Contains, `_foo.scss:2:10":`)
@@ -412,14 +401,89 @@ b {
 T1: {{ $r.Content }}
 	`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		}).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", `T1: body body{background:url(images/hero.jpg) no-repeat center/cover;font-family:Hugo&#39;s New Roman}p{color:blue;font-size:24px}b{color:green}`)
+}
+
+func TestOptionVarsNestedIssue14705(t *testing.T) {
+	t.Parallel()
+	if !dartsass.Supports() {
+		t.Skip()
+	}
+
+	files := `
+-- assets/scss/main.scss --
+@use "hugo:vars";
+@use "hugo:vars/mobile" as mobile;
+
+body {
+	color: vars.$color1;
+	font-size: vars.$font_size;
+}
+
+@media (max-width: 650px) {
+	body {
+		color: mobile.$color1;
+		font-size: mobile.$font_size;
+	}
+}
+-- layouts/home.html --
+{{ $vars := dict
+	"color1" "blue"
+	"font_size" "16px"
+	"mobile" (dict "color1" "red" "font_size" "12px")
+}}
+{{ $cssOpts := (dict "transpiler" "dartsass" "outputStyle" "compressed" "vars" $vars ) }}
+{{ $r := resources.Get "scss/main.scss" |  toCSS $cssOpts }}
+T1: {{ $r.Content }}
+	`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+
+	b.AssertFileContent("public/index.html", `T1: body{color:blue;font-size:16px}@media(max-width: 650px){body{color:red;font-size:12px}}`)
+}
+
+func TestOptionVarsNestedFromParamsIssue14705(t *testing.T) {
+	t.Parallel()
+	if !dartsass.Supports() {
+		t.Skip()
+	}
+
+	files := `
+-- hugo.toml --
+[params]
+[params.sassvars]
+color1 = "blue"
+font_size = "16px"
+[params.sassvars.mobile]
+color1 = "red"
+font_size = "12px"
+-- assets/scss/main.scss --
+@use "hugo:vars";
+@use "hugo:vars/mobile" as mobile;
+
+body {
+	color: vars.$color1;
+	font-size: vars.$font_size;
+}
+
+@media (max-width: 650px) {
+	body {
+		color: mobile.$color1;
+		font-size: mobile.$font_size;
+	}
+}
+-- layouts/home.html --
+{{ $vars := site.Params.sassvars }}
+{{ $cssOpts := (dict "transpiler" "dartsass" "outputStyle" "compressed" "vars" $vars ) }}
+{{ $r := resources.Get "scss/main.scss" |  toCSS $cssOpts }}
+T1: {{ $r.Content }}
+	`
+
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
+
+	b.AssertFileContent("public/index.html", `T1: body{color:blue;font-size:16px}@media(max-width: 650px){body{color:red;font-size:12px}}`)
 }
 
 func TestOptionVarsParams(t *testing.T) {
@@ -460,12 +524,7 @@ b {
 T1: {{ $r.Content }}
 	`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		}).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", `T1: body body{background:url(images/hero.jpg) no-repeat center/cover}p{color:blue;font-size:24px}b{color:green}`)
 }
@@ -516,13 +575,7 @@ float = 3.14
 T1: {{ $r.Content }}
 		`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-			LogLevel:    logg.LevelInfo,
-		}).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs(), hugolib.TestOptInfo())
 
 	b.AssertLogMatches(`Dart Sass: .*assets.*main.scss:3:0: color`)
 	b.AssertLogMatches(`Dart Sass: .*assets.*main.scss:4:0: color`)
@@ -564,12 +617,7 @@ module github.com/gohugoio/tests/testHugoModules
 Styles: {{ $r.RelPermalink }}
 		`
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			NeedsOsFS:   true,
-		}).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", "Styles: /scss/main.css")
 }
@@ -609,12 +657,7 @@ target = "assets/sass"
 .bar2 {color: blue;}
 `
 
-	b := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			NeedsOsFS:   true,
-			TxtarString: files,
-		}).Build()
+	b := hugolib.Test(t, files, hugolib.TestOptOsFs())
 
 	b.AssertFileContent("public/index.html", ".foo1{color:red}.bar1{color:blue}.foo2{color:red}.bar2{color:blue}")
 }
@@ -717,4 +760,78 @@ h2 { color: rgb(color.red(#ddd), 0, 0); } // deprecated
 		"WARN  Dart Sass: DEPRECATED [color-functions]",
 		"color.green() is deprecated",
 	)
+}
+
+// Imports not found in Hugo's file systems used to be resolved by the Sass compiler
+// itself, following symlinks and with no notion of the project boundary.
+func TestTransformImportOutsideProject(t *testing.T) {
+	if !dartsass.Supports() {
+		t.Skip()
+	}
+	c := qt.New(t)
+
+	base := t.TempDir()
+	secret := filepath.Join(base, "secret.scss")
+	c.Assert(os.WriteFile(secret, []byte(`.pwn { content: "PWN-SECRET"; }`), 0o644), qt.IsNil)
+
+	files := `
+-- hugo.toml --
+disableKinds = ["taxonomy", "term", "rss", "sitemap", "robotsTXT", "section", "page"]
+theme = "mytheme"
+SECURITY
+-- themes/mytheme/hugo.toml --
+-- themes/mytheme/assets/css/main.scss --
+@import "IMPORT";
+-- layouts/all.html --
+{{ $css := resources.Get "css/main.scss" | css.Sass (dict "transpiler" "dartsass") }}
+RESULT:<pre>{{ $css.Content }}</pre>
+`
+
+	build := func(c *qt.C, name, imp, security string) (*hugolib.IntegrationTestBuilder, error) {
+		workingDir := filepath.Join(base, name)
+		if runtime.GOOS != "windows" {
+			linkDir := filepath.Join(workingDir, "themes", "mytheme", "assets", "css")
+			c.Assert(os.MkdirAll(linkDir, 0o755), qt.IsNil)
+			c.Assert(os.Symlink(secret, filepath.Join(linkDir, "link.scss")), qt.IsNil)
+		}
+		f := strings.ReplaceAll(files, "IMPORT", imp)
+		f = strings.ReplaceAll(f, "SECURITY", security)
+		return hugolib.NewIntegrationTestBuilder(
+			hugolib.IntegrationTestConfig{
+				T:           c,
+				TxtarString: f,
+				NeedsOsFS:   true,
+				WorkingDir:  workingDir,
+			},
+		).BuildE()
+	}
+
+	const outsideErr = `.*"[^"]*\.scss" resolves to "[^"]*secret.scss" outside the project.*allowRead.*`
+
+	c.Run("Relative import", func(c *qt.C) {
+		_, err := build(c, "relative", "../../../../../secret", "")
+		c.Assert(err, qt.ErrorMatches, outsideErr)
+	})
+
+	c.Run("Symlink in theme", func(c *qt.C) {
+		if runtime.GOOS == "windows" {
+			c.Skip("symlinks")
+		}
+		_, err := build(c, "symlink", "link", "")
+		c.Assert(err, qt.ErrorMatches, outsideErr)
+	})
+
+	c.Run("Absolute import", func(c *qt.C) {
+		_, err := build(c, "absolute", filepath.ToSlash(filepath.Join(base, "secret")), "")
+		c.Assert(err, qt.ErrorMatches, outsideErr)
+	})
+
+	c.Run("Relative import, target in allowRead", func(c *qt.C) {
+		b, err := build(c, "allowed", "../../../../../secret", `
+[security.node.permissions]
+allowRead = [".", ".."]
+`)
+		c.Assert(err, qt.IsNil)
+		b.AssertFileContent("public/index.html", "PWN-SECRET")
+	})
 }

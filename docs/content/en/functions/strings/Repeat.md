@@ -1,6 +1,6 @@
 ---
 title: strings.Repeat
-description: Returns a new string consisting of zero or more copies of another string.
+description: Returns the given string repeated the given number of times.
 categories: []
 keywords: []
 params:
@@ -8,7 +8,6 @@ params:
     aliases: []
     returnType: string
     signatures: [strings.Repeat COUNT STRING]
-aliases: [/functions/strings.repeat]
 ---
 
 ```go-html-template

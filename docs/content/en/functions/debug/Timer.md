@@ -1,13 +1,13 @@
 ---
 title: debug.Timer
-description: Creates a named timer that reports elapsed time to the console.
+description: Returns a named timer used to measure and report elapsed execution time to the console.
 categories: []
 keywords: []
 params:
   functions_and_methods:
     aliases: []
     returnType: debug.Timer
-    signatures: [debug.Timer NAME] 
+    signatures: [debug.Timer NAME]
 ---
 
 Use the `debug.Timer` function to determine execution time for a block of code, useful for finding performance bottlenecks in templates.
@@ -22,7 +22,7 @@ The timer starts when you instantiate it, and stops when you call its `Stop` met
 {{ $t.Stop }}
 ```
 
-Use the `--logLevel info` command line flag when you build the site.
+Use the `--logLevel info` command-line flag when you build the site.
 
 ```sh
 hugo build --logLevel info

@@ -8,7 +8,6 @@ params:
     aliases: [delimit]
     returnType: string
     signatures: ['collections.Delimit SLICE|MAP DELIMITER [LAST]']
-aliases: [/functions/delimit]
 ---
 
 Delimit a slice:
@@ -21,7 +20,7 @@ Delimit a slice:
 
 Delimit a map:
 
-> [!note]
+> [!NOTE]
 > The `delimit` function sorts maps by key, returning the values.
 
 ```go-html-template

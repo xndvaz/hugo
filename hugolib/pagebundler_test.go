@@ -22,6 +22,8 @@ import (
 func TestPageBundlerBasic(t *testing.T) {
 	files := `
 -- hugo.toml --
+[security]
+allowContent = ['.*']
 -- content/mybundle/index.md --
 ---
 title: "My Bundle"
@@ -232,7 +234,7 @@ P1nn
 -- layouts/home.html --
 Len RegularPages: {{ len .Site.RegularPages }}|RegularPages: {{ range site.RegularPages }}{{ .RelPermalink }}: {{ .Title }}|{{ end }}|
 Len Pages: {{ len .Site.Pages }}|
-Len Sites: {{ len .Site.Sites }}|
+Len Sites: {{ len hugo.Sites }}|
 -- layouts/single.html --
 {{ .Title }}|{{ .Content }}|{{ .Lang }}|
 
@@ -292,7 +294,7 @@ P1nn
 -- layouts/home.html --
 Len RegularPages: {{ len .Site.RegularPages }}|RegularPages: {{ range site.RegularPages }}{{ .RelPermalink }}: {{ .Title }}|{{ end }}|
 Len Pages: {{ len .Site.Pages }}|
-Len Sites: {{ len .Site.Sites }}|
+Len Sites: {{ len hugo.Sites }}|
 -- layouts/single.html --
 {{ .Title }}|{{ .Content }}|{{ .Lang }}|
 
@@ -332,13 +334,7 @@ headless: true
 HEADLESS1: {{ $headless1.Title }}|{{ $headless1.RelPermalink }}|{{ len $headless1.Resources }}|
 HEADLESS2: {{ $headless2.Title }}{{ $headless2.RelPermalink }}|{{ len $headless2.Resources }}|
 `
-	b := NewIntegrationTestBuilder(
-		IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			BuildCfg:    BuildCfg{},
-		},
-	).Build()
+	b := Test(t, files)
 
 	b.AssertFileContent("public/index.html", `
 HEADLESS1: My Headless Bundle1||1|
@@ -636,6 +632,8 @@ func TestHTMLFilesIsue11999(t *testing.T) {
 disableKinds = ["taxonomy", "term", "rss", "sitemap", "robotsTXT", "404"]
 [permalinks]
 posts = "/myposts/:slugorcontentbasename"
+[security]
+allowContent = ['.*']
 -- content/posts/markdown-without-frontmatter.md --
 -- content/posts/html-without-frontmatter.html --
 <html>hello</html>
@@ -711,6 +709,8 @@ func TestBundleDuplicatePagesAndResources(t *testing.T) {
 -- hugo.toml --
 baseURL = "https://example.com"
 disableKinds = ["taxonomy", "term"]
+[security]
+allowContent = ['.*']
 -- content/mysection/mybundle/index.md --
 -- content/mysection/mybundle/index.html --
 -- content/mysection/mybundle/p1.md --

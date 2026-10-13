@@ -48,6 +48,7 @@ import (
 	"github.com/gohugoio/hugo/livereload"
 	"github.com/gohugoio/hugo/resources/page"
 	"github.com/gohugoio/hugo/watcher"
+	"github.com/spf13/afero"
 	"github.com/spf13/fsync"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
@@ -195,12 +196,12 @@ func (c *hugoBuilder) initMemProfile() {
 
 	f, err := os.Create(c.r.memprofile)
 	if err != nil {
-		c.r.logger.Errorf("could not create memory profile: ", err)
+		c.r.logger.Errorf("could not create memory profile: %s", err)
 	}
 	defer f.Close()
 	runtime.GC() // get up-to-date statistics
 	if err := pprof.WriteHeapProfile(f); err != nil {
-		c.r.logger.Errorf("could not write memory profile: ", err)
+		c.r.logger.Errorf("could not write memory profile: %s", err)
 	}
 }
 
@@ -367,7 +368,7 @@ func (c *hugoBuilder) newWatcher(pollIntervalStr string, dirList ...string) (*wa
 			case changes := <-c.r.changesFromBuild:
 				unlock, err := h.LockBuild()
 				if err != nil {
-					c.r.logger.Errorln("Failed to acquire a build lock: %s", err)
+					c.r.logger.Errorf("Failed to acquire a build lock: %s", err)
 					return
 				}
 				c.changeDetector.PrepareNew()
@@ -387,7 +388,7 @@ func (c *hugoBuilder) newWatcher(pollIntervalStr string, dirList ...string) (*wa
 			case evs := <-watcher.Events:
 				unlock, err := h.LockBuild()
 				if err != nil {
-					c.r.logger.Errorln("Failed to acquire a build lock: %s", err)
+					c.r.logger.Errorf("Failed to acquire a build lock: %s", err)
 					return
 				}
 				c.handleEvents(watcher, staticSyncer, evs, configSet)
@@ -452,11 +453,7 @@ func (c *hugoBuilder) buildSites(noBuildLock bool) (err error) {
 }
 
 func (c *hugoBuilder) copyStatic() (map[string]uint64, error) {
-	m, err := c.doWithPublishDirs(c.copyStaticTo)
-	if err == nil || herrors.IsNotExist(err) {
-		return m, nil
-	}
-	return m, err
+	return c.doWithPublishDirs(c.copyStaticTo)
 }
 
 func (c *hugoBuilder) copyStaticTo(sourceFs *filesystems.SourceFilesystem) (uint64, error) {
@@ -470,48 +467,93 @@ func (c *hugoBuilder) copyStaticTo(sourceFs *filesystems.SourceFilesystem) (uint
 	fs := &countingStatFs{Fs: sourceFs.Fs}
 
 	syncer := fsync.NewSyncer()
+	var clean config.CleanDestinationDir
 	c.withConf(func(conf *commonConfig) {
 		syncer.NoTimes = conf.configs.Base.NoTimes
 		syncer.NoChmod = conf.configs.Base.NoChmod
 		syncer.ChmodFilter = chmodFilter
 
 		syncer.DestFs = conf.fs.PublishDirStatic
-		// Now that we are using a unionFs for the static directories
-		// We can effectively clean the publishDir on initial sync
-		syncer.Delete = conf.configs.Base.CleanDestinationDir
+		clean = conf.configs.Base.Build.CleanDestinationDir
 	})
 
 	syncer.SrcFs = fs
 
-	if syncer.Delete {
-		infol.Logf("removing all files from destination that don't exist in static dirs")
-
-		syncer.DeleteFilter = func(f fsync.FileInfo) bool {
-			name := f.Name()
-
-			// Keep .gitignore and .gitattributes anywhere
-			if name == ".gitignore" || name == ".gitattributes" {
-				return true
-			}
-
-			// Keep Hugo's original dot-directory behavior
-			return f.IsDir() && strings.HasPrefix(name, ".")
-		}
-	}
 	start := time.Now()
 
 	// because we are using a baseFs (to get the union right).
 	// set sync src to root
-	err := syncer.Sync(publishDir, helpers.FilePathSeparator)
-	if err != nil {
+	if _, err := fs.Stat(helpers.FilePathSeparator); err == nil {
+		if err := syncer.Sync(publishDir, helpers.FilePathSeparator); err != nil {
+			return 0, err
+		}
+	} else if !herrors.IsNotExist(err) {
 		return 0, err
 	}
+
+	if clean.Enable {
+		infol.Logf("removing stale files from destination")
+		if err := removeStale(syncer.DestFs, sourceFs.Fs, publishDir, helpers.FilePathSeparator, clean.Keep); err != nil {
+			return 0, err
+		}
+	}
+
 	loggers.TimeTrackf(infol, start, nil, "syncing static files to %s", publishDir)
 
 	// Sync runs Stat 2 times for every source file.
 	numFiles := fs.statCounter / 2
 
-	return numFiles, err
+	return numFiles, nil
+}
+
+// removeStale removes entries in dstDir on dst that keep reports as false and
+// that don't exist in srcDir on src. Unlike fsync's delete pass, it applies
+// keep at every level, so kept files survive inside stale directories.
+// keep gets the slash separated path relative to srcDir's root, e.g. "dir/.gitignore".
+func removeStale(dst, src afero.Fs, dstDir, srcDir string, keep func(path string, isDir bool) bool) error {
+	entries, err := afero.ReadDir(dst, dstDir)
+	if err != nil {
+		if herrors.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		dstPath := filepath.Join(dstDir, entry.Name())
+		srcPath := filepath.Join(srcDir, entry.Name())
+		if keep(strings.TrimPrefix(filepath.ToSlash(srcPath), "/"), entry.IsDir()) {
+			continue
+		}
+		if _, err := src.Stat(srcPath); err == nil {
+			if entry.IsDir() {
+				if err := removeStale(dst, src, dstPath, srcPath, keep); err != nil {
+					return err
+				}
+			}
+			continue
+		} else if !herrors.IsNotExist(err) {
+			return err
+		}
+		if entry.IsDir() {
+			if err := removeStale(dst, src, dstPath, srcPath, keep); err != nil {
+				return err
+			}
+			remaining, err := afero.ReadDir(dst, dstPath)
+			if err != nil {
+				if herrors.IsNotExist(err) {
+					continue
+				}
+				return err
+			}
+			if len(remaining) > 0 {
+				continue
+			}
+		}
+		if err := dst.RemoveAll(dstPath); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *hugoBuilder) doWithPublishDirs(f func(sourceFs *filesystems.SourceFilesystem) (uint64, error)) (map[string]uint64, error) {
@@ -549,11 +591,18 @@ func (c *hugoBuilder) doWithPublishDirs(f func(sourceFs *filesystems.SourceFiles
 }
 
 func (c *hugoBuilder) progressIntermediate() {
-	terminal.ReportProgress(c.r.StdOut, terminal.ProgressIntermediate, 0)
+	terminal.ReportProgress(c.r.StdOut, terminal.ProgressIntermediate, 0, "")
 }
 
 func (c *hugoBuilder) progressHidden() {
-	terminal.ReportProgress(c.r.StdOut, terminal.ProgressHidden, 0)
+	terminal.ReportProgress(c.r.StdOut, terminal.ProgressHidden, 0, "")
+}
+
+// progressInterrupted reports idle, as recommended for interrupted programs in OSC 7501.
+func (c *hugoBuilder) progressInterrupted() {
+	if terminal.PrintANSIColors(os.Stdout) {
+		c.progressHidden()
+	}
 }
 
 func (c *hugoBuilder) fullBuild(noBuildLock bool) error {
@@ -590,7 +639,7 @@ func (c *hugoBuilder) fullBuild(noBuildLock bool) error {
 	// and it does so at the end of copyStatic() call.
 	var cleanDestinationDir bool
 	c.withConf(func(conf *commonConfig) {
-		cleanDestinationDir = conf.configs.Base.CleanDestinationDir
+		cleanDestinationDir = conf.configs.Base.Build.CleanDestinationDir.Enable
 	})
 	if cleanDestinationDir {
 		if err := copyStaticFunc(); err != nil {
@@ -937,7 +986,8 @@ func (c *hugoBuilder) handleEvents(watcher *watcher.Batcher,
 	if len(dynamicEvents) > 0 {
 		partitionedEvents := partitionDynamicEvents(
 			h.BaseFs.SourceFilesystems,
-			dynamicEvents)
+			dynamicEvents,
+		)
 
 		onePageName := pickOneWriteOrCreatePath(h.Conf.ContentTypes(), partitionedEvents.ContentEvents)
 
@@ -1069,11 +1119,17 @@ func (c *hugoBuilder) hugoTry() *hugolib.HugoSites {
 
 func (c *hugoBuilder) loadConfig(cd *simplecobra.Commandeer, running bool) error {
 	if terminal.PrintANSIColors(os.Stdout) {
-		defer c.progressHidden()
+		var shown atomic.Bool
+		defer func() {
+			if shown.Load() {
+				c.progressHidden()
+			}
+		}()
 		// If the configuration takes a while to load, we want to show some progress.
 		// This is typically loading of external modules.
 		d := debounce.New(500 * time.Millisecond)
 		d(func() {
+			shown.Store(true)
 			c.progressIntermediate()
 		})
 		defer d(func() {})
@@ -1082,22 +1138,8 @@ func (c *hugoBuilder) loadConfig(cd *simplecobra.Commandeer, running bool) error
 	cfg := config.New()
 	cfg.Set("renderToMemory", c.r.renderToMemory)
 	watch := c.r.buildWatch || (c.s != nil && c.s.serverWatch)
-	if c.r.environment == "" {
-		// We need to set the environment as early as possible because we need it to load the correct config.
-		// Check if the user has set it in env.
-		if env := os.Getenv("HUGO_ENVIRONMENT"); env != "" {
-			c.r.environment = env
-		} else if env := os.Getenv("HUGO_ENV"); env != "" {
-			c.r.environment = env
-		} else {
-			if c.s != nil {
-				// The server defaults to development.
-				c.r.environment = hugo.EnvironmentDevelopment
-			} else {
-				c.r.environment = hugo.EnvironmentProduction
-			}
-		}
-	}
+	// We need to set the environment as early as possible because we need it to load the correct config.
+	c.r.resolveEnvironment(c.s != nil)
 	cfg.Set("environment", c.r.environment)
 
 	cfg.Set("internal", hmaps.Params{
@@ -1110,11 +1152,6 @@ func (c *hugoBuilder) loadConfig(cd *simplecobra.Commandeer, running bool) error
 	conf, err := c.r.ConfigFromProvider(configKey{counter: c.r.configVersionID.Load()}, flagsToCfg(cd, cfg))
 	if err != nil {
 		return err
-	}
-
-	if len(conf.configs.LoadingInfo.ConfigFiles) == 0 {
-		//lint:ignore ST1005 end user message.
-		return errors.New("Unable to locate config file or config directory. Perhaps you need to create a new project.\nRun `hugo help new` for details.")
 	}
 
 	c.conf = conf

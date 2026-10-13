@@ -63,7 +63,7 @@ func TestContentMountMerge(t *testing.T) {
 	files := `
 -- hugo.toml --
 baseURL = 'https://example.org/'
-languageCode = 'en-us'
+locale = 'en-us'
 title = 'Hugo Forum Topic #37225'
 theme = 'mytheme'
 
@@ -72,44 +72,49 @@ defaultContentLanguage = 'en'
 defaultContentLanguageInSubdir = true
 
 [languages.en]
-languageName = 'English'
+label = 'English'
 weight = 1
 [languages.de]
-languageName = 'Deutsch'
+label = 'Deutsch'
 weight = 2
 [languages.nl]
-languageName = 'Nederlands'
+label = 'Nederlands'
 weight = 3
 
 # EN content
 [[module.mounts]]
 source = 'content/en'
 target = 'content'
-lang = 'en'
+[module.mounts.sites.matrix]
+languages = 'en'
 
 # DE content
 [[module.mounts]]
 source = 'content/de'
 target = 'content'
-lang = 'de'
+[module.mounts.sites.matrix]
+languages = 'de'
 
 # This fills in the gaps in DE content with EN content
 [[module.mounts]]
 source = 'content/en'
 target = 'content'
-lang = 'de'
+[module.mounts.sites.matrix]
+languages = 'de'
 
 # NL content
 [[module.mounts]]
 source = 'content/nl'
 target = 'content'
-lang = 'nl'
+[module.mounts.sites.matrix]
+languages = 'nl'
 
 # This should fill in the gaps in NL content with EN content
 [[module.mounts]]
 source = 'content/en'
 target = 'content'
-lang = 'nl'
+[module.mounts.sites.matrix]
+languages = 'nl'
 
 -- content/de/_index.md --
 ---
@@ -153,7 +158,8 @@ title: "p3 (nl)"
 [[module.mounts]]
 source = 'content/nlt'
 target = 'content'
-lang = 'nl'
+[module.mounts.sites.matrix]
+languages = 'nl'
 -- themes/mytheme/content/nlt/p3.md --
 ---
 title: "p3 theme (nl)"
@@ -169,6 +175,65 @@ title: "p4 theme (nl)"
 	b.AssertFileContent("public/nl/index.html", `home (nl): nl: p1 (nl)|p2 (en)|p3 (nl)|p4 theme (nl)|:END`)
 	b.AssertFileContent("public/de/index.html", `home (de): de: p1 (de)|p2 (en)|p3 (en)|:END`)
 	b.AssertFileContent("public/en/index.html", `home (en): en: p1 (en)|p2 (en)|p3 (en)|:END`)
+}
+
+// Issue 14681
+func TestPublishMultilingualSectionCreation(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+capitalizeListTitles = false
+pluralizeListTitles = false
+disableKinds = ['rss','sitemap','taxonomy','term']
+
+defaultContentLanguage = "fr"
+defaultContentLanguageInSubdir = true
+
+[languages.fr]
+contentDir = "content/fr"
+weight = 1
+
+[languages.en]
+contentDir = "content/en"
+weight = 2
+
+[languages.de]
+contentDir = "content/de"
+weight = 3
+-- layouts/home.html --
+HOME {{ .Language.Name }}
+-- layouts/page.html --
+{{ .Title }} {{ .Language.Name }}
+-- layouts/section.html --
+{{ .Title }} {{ .Language.Name }}
+-- content/de/s1/p1.md --
+---
+title: p1
+---
+-- content/en/s1/p2.md --
+---
+title: p2
+---
+-- content/fr/s1/p3.md --
+---
+title: p3
+---
+`
+
+	b := Test(t, files)
+
+	b.AssertFileContent("public/de/index.html", "HOME de")
+	b.AssertFileContent("public/de/s1/index.html", "s1 de")
+	b.AssertFileContent("public/de/s1/p1/index.html", "p1 de")
+
+	b.AssertFileContent("public/en/index.html", "HOME en")
+	b.AssertFileContent("public/en/s1/index.html", "s1 en") // fail (file does not exist)
+	b.AssertFileContent("public/en/s1/p2/index.html", "p2 en")
+
+	b.AssertFileContent("public/fr/index.html", "HOME fr")
+	b.AssertFileContent("public/fr/s1/index.html", "s1 fr") // fail (file does not exist)
+	b.AssertFileContent("public/fr/s1/p3/index.html", "p3 fr")
 }
 
 // Issue 13993
@@ -196,19 +261,22 @@ weight = 2
 [[module.mounts]]
 source = "content/en"
 target = "content"
-lang = "en"
+[module.mounts.sites.matrix]
+languages = "en"
 
 [[module.mounts]]
 source = "content/es"
 target = "content"
-lang = "es"
+[module.mounts.sites.matrix]
+languages = "es"
 
 # Populate the missing es content with en content
 
 [[module.mounts]]
 source = "content/en"
 target = "content"
-lang = "es"
+[module.mounts.sites.matrix]
+languages = "es"
 -- layouts/all.html --
 {{ .Title }}
 -- content/en/p1.md --

@@ -38,13 +38,7 @@ title: Page
 Home: {{ .Title }}
 `
 
-	b := NewIntegrationTestBuilder(
-		IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-			// LogLevel:    logg.LevelTrace,
-		},
-	).Build()
+	b := Test(t, files)
 
 	b.Assert(b.H.Log.LoggCount(logg.LevelWarn), qt.Equals, 0)
 	b.AssertFileContent("public/index.html", `Hello`)
@@ -78,11 +72,13 @@ weight = 100
 [[module.mounts]]
 source = 'content/en'
 target = 'content'
-lang = 'en'
+[module.mounts.sites.matrix]
+languages = 'en'
 [[module.mounts]]
 source = 'content/nn'
 target = 'content'
-lang = 'nn'
+[module.mounts.sites.matrix]
+languages = 'nn'
 [[module.mounts]]
 source = 'content/all'
 target = 'content'
@@ -437,11 +433,11 @@ Home Content.
 ---
 title: Hjem
 cascade:
-  - _target:
+  - target:
       kind: page
       path: /posts/**
     background: post.jpg
-  - _target:
+  - target:
       kind: term
     background: term.jpg
 ---
@@ -508,13 +504,7 @@ Content Tag 1.
 
 `
 
-	b := NewIntegrationTestBuilder(IntegrationTestConfig{
-		T:           t,
-		TxtarString: files,
-		NeedsOsFS:   true,
-		// Verbose:     true,
-		// LogLevel:    logg.LevelTrace,
-	}).Build()
+	b := Test(t, files, TestOptOsFs())
 
 	b.AssertFileContent("public/en/index.html",
 		"Home: en|home|/en/|Home in English|<p>Home Content.</p>\n|HTML",
@@ -623,11 +613,13 @@ target = "data"
 [[module.mounts]]
 source = "content/en"
 target = "content"
-lang = "en"
+[module.mounts.sites.matrix]
+languages = "en"
 [[module.mounts]]
 source = "content/nn"
 target = "content"
-lang = "nn"
+[module.mounts.sites.matrix]
+languages = "nn"
 [[module.imports]]
 path = "mytheme"
 -- layouts/home.html --
@@ -751,11 +743,7 @@ The content.
 
 // This is just a test to verify that BenchmarkBaseline is working as intended.
 func TestBenchmarkBaseline(t *testing.T) {
-	cfg := IntegrationTestConfig{
-		T:           t,
-		TxtarString: benchmarkBaselineFiles(true),
-	}
-	b := NewIntegrationTestBuilder(cfg).Build()
+	b := Test(t, benchmarkBaselineFiles(true))
 
 	b.Assert(len(b.H.Sites), qt.Equals, 4)
 	b.Assert(len(b.H.Sites[0].RegularPages()), qt.Equals, 161)
@@ -791,19 +779,23 @@ defaultContentLanguage = 'en'
 [[module.mounts]]
 source = 'content/en'
 target = 'content/en'
-lang = 'en'
+[module.mounts.sites.matrix]
+languages = 'en'
 [[module.mounts]]
 source = 'content/nn'
 target = 'content/nn'
-lang = 'nn'
+[module.mounts.sites.matrix]
+languages = 'nn'
 [[module.mounts]]
 source = 'content/no'
 target = 'content/no'
-lang = 'no'
+[module.mounts.sites.matrix]
+languages = 'no'
 [[module.mounts]]
 source = 'content/sv'
 target = 'content/sv'
-lang = 'sv'
+[module.mounts.sites.matrix]
+languages = 'sv'
 [[module.mounts]]
 source = 'layouts'
 target = 'layouts'

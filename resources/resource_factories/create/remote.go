@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,6 +109,28 @@ var temporaryHTTPStatusCodes = map[int]bool{
 	502: true,
 	503: true,
 	504: true,
+}
+
+// parseRetryAfter returns the duration to wait per the Retry-After header in
+// resp, or 0 if the header is absent or unparseable. Per RFC 7231 the value
+// may be either delta-seconds or an HTTP-date.
+func parseRetryAfter(resp *http.Response) time.Duration {
+	if resp == nil {
+		return 0
+	}
+	h := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if h == "" {
+		return 0
+	}
+	if n, err := strconv.Atoi(h); err == nil && n >= 0 {
+		return time.Duration(n) * time.Second
+	}
+	if t, err := http.ParseTime(h); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
+	return 0
 }
 
 func (c *Client) configurePollingIfEnabled(uri, optionsKey string, getRes func() (*http.Response, context.CancelFunc, error)) {
@@ -441,6 +464,10 @@ var _ http.RoundTripper = (*transport)(nil)
 type transport struct {
 	Cfg    config.AllProvider
 	Logger loggers.Logger
+
+	// base does the actual round trip. It carries a dial-time hook that
+	// validates the resolved destination address (see New).
+	base http.RoundTripper
 }
 
 func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
@@ -459,7 +486,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 
 	for {
 		resp, retry, err = func() (*http.Response, bool, error) {
-			resp2, err := http.DefaultTransport.RoundTrip(req)
+			resp2, err := t.base.RoundTrip(req)
 			if err != nil {
 				return resp2, false, err
 			}
@@ -473,17 +500,26 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		}()
 
 		if retry {
+			sleep := nextSleep
+			retryAfter := parseRetryAfter(resp)
+			if retryAfter > 0 {
+				sleep = retryAfter
+			}
 			if start.IsZero() {
 				start = time.Now()
-			} else if d := time.Since(start) + nextSleep; d >= t.Cfg.Timeout() {
+			}
+			if d := time.Since(start) + sleep; d >= t.Cfg.Timeout() {
 				msg := "<nil>"
 				if resp != nil {
 					msg = resp.Status
 				}
+				if retryAfter > 0 {
+					msg = fmt.Sprintf("%s (server requested Retry-After: %s)", msg, retryAfter)
+				}
 				err := toHTTPError(fmt.Errorf("retry timeout (configured to %s) fetching remote resource: %s", t.Cfg.Timeout(), msg), resp, req.Method != "HEAD", nil)
 				return resp, err
 			}
-			time.Sleep(nextSleep)
+			time.Sleep(sleep)
 			if nextSleep < nextSleepLimit {
 				nextSleep *= 2
 			}

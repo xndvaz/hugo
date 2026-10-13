@@ -8,11 +8,10 @@ params:
     aliases: [shuffle]
     returnType: '[]any'
     signatures: [collections.Shuffle SLICE]
-aliases: [/functions/shuffle]
 ---
 
 ```go-html-template
-{{ collections.Shuffle (slice "a" "b" "c") }} → [b a c] 
+{{ collections.Shuffle (slice "a" "b" "c") }} → [b a c]
 ```
 
 The result will vary from one build to the next.

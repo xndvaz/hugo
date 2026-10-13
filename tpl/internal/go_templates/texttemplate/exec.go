@@ -7,13 +7,12 @@ package template
 import (
 	"errors"
 	"fmt"
+	"github.com/gohugoio/hugo/tpl/internal/go_templates/fmtsort"
+	"github.com/gohugoio/hugo/tpl/internal/go_templates/texttemplate/parse"
 	"io"
 	"reflect"
 	"runtime"
 	"strings"
-
-	"github.com/gohugoio/hugo/tpl/internal/go_templates/fmtsort"
-	"github.com/gohugoio/hugo/tpl/internal/go_templates/texttemplate/parse"
 )
 
 // maxExecDepth specifies the maximum stack depth of templates within
@@ -327,7 +326,6 @@ func isTrueOld(val reflect.Value) (truth, ok bool) {
 		// Something like var x interface{}, never set. It's a form of nil.
 		return false, true
 	}
-
 	switch val.Kind() {
 	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
 		truth = val.Len() > 0
@@ -497,7 +495,7 @@ func (s *state) walkRange(dot reflect.Value, r *parse.RangeNode) {
 	}
 }
 
-func (s *state) walkTemplate(dot reflect.Value, t *parse.TemplateNode) {
+func (s *state) walkTemplateOld(dot reflect.Value, t *parse.TemplateNode) {
 	s.at(t)
 	tmpl := s.tmpl.Lookup(t.Name)
 	if tmpl == nil {

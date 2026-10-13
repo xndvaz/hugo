@@ -202,7 +202,7 @@ type VectorProvider interface {
 	VectorIterator
 	// HasVector returns true if the given vector is contained in the provider.
 	// Used for membership testing of files, resources and pages.
-	HasVector(HasAnyVectorv Vector) bool
+	HasVector(v Vector) bool
 
 	// HasAnyVector returns true if any of the vectors in the provider matches any of the vectors in v.
 	HasAnyVector(v VectorProvider) bool
@@ -214,7 +214,9 @@ type VectorProvider interface {
 type VectorStore interface {
 	VectorProvider
 	Complement(...VectorProvider) VectorStore
-	WithLanguageIndices(i int) VectorStore
+	WithLanguageIndices(i ...int) VectorStore
+	WithVersionIndices(i ...int) VectorStore
+	WithRoleIndices(i ...int) VectorStore
 	HasLanguage(lang int) bool
 	HasVersion(version int) bool
 	HasRole(role int) bool
@@ -227,6 +229,13 @@ type VectorStore interface {
 
 type ToVectorStoreProvider interface {
 	ToVectorStore() VectorStore
+}
+
+// CoarseSiteVectorMatcher is implemented by types that can match a site vector in a coarse way, i.e. it first checks for a
+// sites matrix match and then falls back to checking the sites complements.
+type CoarseSiteVectorMatcher interface {
+	MatchSiteVectorCoarse(Vector) bool
+	MatchSiteVectorCoarseExcludeLanguage(Vector) bool
 }
 
 func VectorIteratorToStore(vi VectorIterator) VectorStore {

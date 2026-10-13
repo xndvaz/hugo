@@ -60,7 +60,7 @@ Copy3: {{ $copy3.RelPermalink}}|{{ $copy3.MediaType }}|{{ $copy3.Content | safeJ
 
 	b.AssertFileContent("public/index.html", `
 Image Orig:  /blog/images/pixel.png|image/png|1|1|
-Image Copy1:  /blog/images/copy_hu_ef85c36d9b9eff0.png|image/png|3|4|
+Image Copy1:  /blog/images/copy_hu_e592d810de530dee.png|image/png|3|4|
 Image Copy2:  /blog/images/copy2.png|image/png|3|4|
 Image Copy3:  image/png|3|4|
 Orig: /blog/js/foo.js|text/javascript|let foo;|
@@ -85,11 +85,7 @@ func TestCopyPageShouldFail(t *testing.T) {
 
 	`
 
-	b, err := hugolib.NewIntegrationTestBuilder(
-		hugolib.IntegrationTestConfig{
-			T:           t,
-			TxtarString: files,
-		}).BuildE()
+	b, err := hugolib.TestE(t, files)
 
 	b.Assert(err, qt.IsNotNil)
 }
@@ -275,9 +271,49 @@ disableKinds = ['page','section','rss','sitemap','taxonomy','term']
 
 	b := hugolib.Test(t, files, hugolib.TestOptWarn())
 
-	b.AssertFileContent("public/index.html",
+	b.AssertFileContent(
+		"public/index.html",
 		".dartsass{color:red}",
 		".libsass{color:blue}",
 	)
 	b.AssertLogContains("! WARN  Dart Sass: hugo:vars")
+}
+
+// See issue 15208.
+func TestPublish(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+disableKinds = ["taxonomy", "term", "section", "RSS", "sitemap", "robotsTXT", "404"]
+-- assets/js/main.js --
+let foo;
+-- layouts/home.html --
+{{ $r := resources.Get "js/main.js" | minify | resources.Publish }}
+Name: {{ $r.Name }}|
+`
+
+	b := hugolib.Test(t, files)
+
+	b.AssertFileContent("public/index.html", "Name: /js/main.js|")
+	b.AssertFileExists("public/js/main.min.js", true)
+}
+
+// See issue 15086.
+func TestPostProcessDeprecated(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+disableKinds = ["taxonomy", "term", "section", "RSS", "sitemap", "robotsTXT", "404"]
+-- assets/css/main.css --
+body { color: red; }
+-- layouts/home.html --
+{{ $r := resources.Get "css/main.css" | minify | resources.PostProcess }}
+{{ $r.RelPermalink }}
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptInfo())
+
+	b.AssertLogContains("resources.PostProcess was deprecated in Hugo v0.164.0")
 }

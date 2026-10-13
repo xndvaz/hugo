@@ -33,13 +33,12 @@ import (
 	"github.com/gohugoio/hugo/common/hashing"
 	"github.com/gohugoio/hugo/common/herrors"
 	"github.com/gohugoio/hugo/common/hexec"
+	"github.com/gohugoio/hugo/common/hstrings"
 	"github.com/gohugoio/hugo/common/hugio"
 	"github.com/gohugoio/hugo/common/loggers"
 	"github.com/gohugoio/hugo/config"
 
 	hglob "github.com/gohugoio/hugo/hugofs/hglob"
-
-	"github.com/gobwas/glob"
 
 	"github.com/gohugoio/hugo/hugofs"
 
@@ -88,7 +87,7 @@ func NewClient(cfg ClientConfig) *Client {
 		logger = loggers.NewDefault()
 	}
 
-	var noVendor glob.Glob
+	var noVendor hstrings.Matcher
 	if cfg.ModuleConfig.NoVendor != "" {
 		noVendor, _ = hglob.GetGlob(hglob.NormalizePath(cfg.ModuleConfig.NoVendor))
 	}
@@ -109,7 +108,7 @@ type Client struct {
 	fs     afero.Fs
 	logger loggers.Logger
 
-	noVendor glob.Glob
+	noVendor hstrings.Matcher
 
 	ccfg ClientConfig
 
@@ -405,7 +404,7 @@ func (c *Client) Clean(pattern string) error {
 		return err
 	}
 
-	var g glob.Glob
+	var g hstrings.Matcher
 
 	if pattern != "" {
 		var err error
@@ -615,7 +614,7 @@ func (c *Client) writeHugoDirectSum(mods Modules) error {
 			continue
 		}
 		if m.IsGoMod() && m.VersionQuery() != "" {
-			sums = append(sums, modSum{pathVersionKey: pathVersionKey{path: m.Path(), version: m.Version()}, sum: m.Sum()})
+			sums = append(sums, modSum{path: m.Path(), version: m.Version(), sum: m.Sum()})
 		}
 	}
 
@@ -903,7 +902,7 @@ type ClientConfig struct {
 
 	// Ignore any _vendor directory for module paths matching the given pattern.
 	// This can be nil.
-	IgnoreVendor glob.Glob
+	IgnoreVendor hstrings.Matcher
 
 	// Ignore any module not found errors.
 	IgnoreModuleDoesNotExist bool
@@ -979,6 +978,7 @@ type goModule struct {
 	Time     *time.Time     // time version was created
 	Update   *goModule      // available update, if any (with -u)
 	Sum      string         // checksum
+	GoModSum string         // checksum for go.mod
 	Main     bool           // is this the main module?
 	Indirect bool           // is this module only an indirect dependency of main module?
 	Dir      string         // directory holding files for this module, if any
@@ -990,6 +990,7 @@ type goModule struct {
 type goModuleOrigin struct {
 	VCS    string // version control system, e.g. "git"
 	URL    string // repository URL, e.g. "https://github.com/bep/hugo-testing-git-versions"
+	Subdir string // subdirectory within the repo where the module lives, e.g. "site"
 	Hash   string // commit hash
 	TagSum string
 	Ref    string // e.g. "refs/tags/v3.0.1"
@@ -1044,18 +1045,32 @@ func (modules goModules) GetMain() *goModule {
 
 func getModlineSplitter(isGoMod bool) func(line string) []string {
 	if isGoMod {
+		var inRequireBlock bool
 		return func(line string) []string {
 			if strings.HasPrefix(line, "require (") {
+				inRequireBlock = true
 				return nil
 			}
-			if !strings.HasPrefix(line, "require") && !strings.HasPrefix(line, "\t") {
+			if inRequireBlock {
+				if strings.HasPrefix(line, ")") {
+					inRequireBlock = false
+					return nil
+				}
+				if !strings.HasPrefix(line, "\t") {
+					return nil
+				}
+			} else if !strings.HasPrefix(line, "require ") {
 				return nil
 			}
 			line = strings.TrimPrefix(line, "require")
 			line = strings.TrimSpace(line)
 			line = strings.TrimSuffix(line, "// indirect")
 
-			return strings.Fields(line)
+			parts := strings.Fields(line)
+			if len(parts) < 2 {
+				return nil
+			}
+			return parts
 		}
 	}
 

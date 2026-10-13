@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/gohugoio/hugo/common/hmaps"
+	"github.com/gohugoio/hugo/common/hugo"
 
 	"github.com/gohugoio/hugo/resources/postpub"
 
@@ -57,7 +58,10 @@ func New(deps *deps.Deps) (*Namespace, error) {
 	}, nil
 }
 
-var _ resource.ResourceFinder = (*Namespace)(nil)
+var (
+	_ resource.ResourceFinder = (*Namespace)(nil)
+	_ resource.Identifier     = (*Namespace)(nil)
+)
 
 // Namespace provides template functions for the "resources" namespace.
 type Namespace struct {
@@ -292,7 +296,27 @@ func (ns *Namespace) Minify(r resources.ResourceTransformer) (resource.Resource,
 	return ns.minifyClient.Minify(r)
 }
 
+// Publish publishes r to the destination and returns it.
+func (ns *Namespace) Publish(r resource.Resource) (resource.Resource, error) {
+	s, ok := r.(resource.Source)
+	if !ok {
+		return nil, fmt.Errorf("%T can not be published", r)
+	}
+	if err := s.Publish(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // PostProcess processes r after the build.
+//
+// Deprecated: Use templates.Defer instead.
 func (ns *Namespace) PostProcess(r resource.Resource) (postpub.PostPublishedResource, error) {
+	hugo.DeprecateWithLogger("resources.PostProcess", "Use templates.Defer instead. See https://gohugo.io/functions/templates/defer/", "v0.164.0", ns.deps.Log.Logger())
 	return ns.deps.ResourceSpec.PostProcess(r)
+}
+
+// For internal use only.
+func (ns *Namespace) Key() string {
+	return "tpl.resources"
 }

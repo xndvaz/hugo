@@ -149,7 +149,7 @@ func NewStore(opts StoreOptions, siteOpts SiteOptions) (*TemplateStore, error) {
 	if err := s.insertEmbedded(); err != nil {
 		return nil, err
 	}
-	if err := s.parseTemplates(false); err != nil {
+	if err := s.parseTemplates(); err != nil {
 		return nil, err
 	}
 	if err := s.extractInlinePartials(false); err != nil {
@@ -248,6 +248,9 @@ type TemplInfo struct {
 
 	// The base template used, if any.
 	base *TemplInfo
+
+	// For partial decorator inner templates, the template the inner block was defined in.
+	decoratorOwner *TemplInfo
 
 	// The descriptior that this template represents.
 	D TemplateDescriptor
@@ -388,6 +391,10 @@ type TemplateQuery struct {
 	// The path to walk down to.
 	Path string
 
+	// Currently only set for page.Render, e.g. using "foo/bar/mylayout";
+	// in that example SubPath will be "foo/bar" and LayoutFromUser will be "mylayout".
+	SubPath string
+
 	// The name to look for. Used for shortcode queries.
 	Name string
 
@@ -425,6 +432,10 @@ func (q *TemplateQuery) init() {
 	}
 
 	q.Name = strings.ToLower(q.Name)
+	q.Desc.LayoutFromUser = strings.ToLower(q.Desc.LayoutFromUser)
+	if q.SubPath != "" {
+		q.SubPath = paths.AddLeadingSlash(strings.ToLower(paths.ToSlashTrim(q.SubPath)))
+	}
 
 	if q.Category == 0 {
 		panic("category not set")
@@ -628,6 +639,31 @@ func (s *TemplateStore) LookupPartial(pth string) *TemplInfo {
 	return ti
 }
 
+// ResolvePartialName resolves partial names starting with "./" or "../"
+// relative to the directory of the calling partial.
+func (s *TemplateStore) ResolvePartialName(ctx context.Context, name string) (string, error) {
+	if !strings.HasPrefix(name, "./") && !strings.HasPrefix(name, "../") {
+		return name, nil
+	}
+	cur := tpl.Context.CurrentTemplate.Get(ctx)
+	if cur == nil {
+		return "", fmt.Errorf("relative partial path %q can only be used from within a partial", name)
+	}
+	ti := cur.CurrentTemplateInfoOps.(*TemplInfo)
+	for ti.decoratorOwner != nil {
+		ti = ti.decoratorOwner
+	}
+	if ti.category != CategoryPartial {
+		return "", fmt.Errorf("relative partial path %q can only be used from within a partial, called from %q", name, ti.Name())
+	}
+	dir := strings.TrimPrefix(strings.TrimPrefix(ti.PathInfo.Dir(), "/"+containerPartials), "/")
+	resolved := path.Join(dir, name)
+	if resolved == ".." || strings.HasPrefix(resolved, "../") {
+		return "", fmt.Errorf("relative partial path %q in %q resolves outside the partials directory", name, ti.Name())
+	}
+	return resolved, nil
+}
+
 func (s *TemplateStore) LookupShortcodeByName(name string) *TemplInfo {
 	name = strings.ToLower(name)
 	ti, _ := s.shortcodesByName.Get(name)
@@ -740,7 +776,7 @@ func (s *TemplateStore) RefreshFiles(include func(fi hugofs.FileMetaInfo) bool) 
 	if err := s.createTemplatesSnapshot(); err != nil {
 		return err
 	}
-	if err := s.parseTemplates(true); err != nil {
+	if err := s.parseTemplates(); err != nil {
 		return err
 	}
 	if err := s.extractInlinePartials(true); err != nil {
@@ -856,34 +892,53 @@ func (s *TemplateStore) inPath(k1, k2 string) bool {
 }
 
 func (s *TemplateStore) findBestMatchWalkPath(q TemplateQuery, k1 string, slashCountK1 int, best *bestMatch) {
+	if q.SubPath != "" {
+		// Match templates in <dir><SubPath> only, for every ancestor dir of k1.
+		// Walk from the root down (as WalkPath does) so the nearest match wins
+		// on equal-weight ties.
+		for i, distance := 0, slashCountK1; ; distance-- {
+			k2 := k1[:i] + q.SubPath
+			if v := s.treeMain.Get(k2); v != nil {
+				s.findBestMatchIn(q, k2, distance, v, best)
+			}
+			if i == len(k1) {
+				break
+			}
+			if j := strings.IndexByte(k1[i+1:], '/'); j >= 0 {
+				i += j + 1
+			} else {
+				i = len(k1)
+			}
+		}
+		return
+	}
+
 	s.treeMain.WalkPath(k1, func(k2 string, v map[nodeKey]*TemplInfo) (bool, error) {
 		if !s.inPath(k1, k2) {
 			return false, nil
 		}
-		slashCountK2 := strings.Count(k2, "/")
-		distance := slashCountK1 - slashCountK2
-
-		for k, vv := range v {
-			if vv.category != q.Category {
-				continue
-			}
-
-			if !q.Consider(vv) {
-				continue
-			}
-
-			weight := s.dh.compareDescriptors(q.Category, q.Desc, k.d, q.Sites, vv.matrix)
-
-			weight.distance = distance
-			isBetter := best.isBetter(weight, vv)
-
-			if isBetter {
-				best.updateValues(weight, k2, k.d, vv)
-			}
-		}
-
+		s.findBestMatchIn(q, k2, slashCountK1-strings.Count(k2, "/"), v, best)
 		return false, nil
 	})
+}
+
+func (s *TemplateStore) findBestMatchIn(q TemplateQuery, k2 string, distance int, v map[nodeKey]*TemplInfo, best *bestMatch) {
+	for k, vv := range v {
+		if vv.category != q.Category {
+			continue
+		}
+
+		if !q.Consider(vv) {
+			continue
+		}
+
+		weight := s.dh.compareDescriptors(q.Category, q.Desc, k.d, q.Sites, vv.matrix)
+		weight.distance = distance
+
+		if best.isBetter(weight, vv) {
+			best.updateValues(weight, k2, k.d, vv)
+		}
+	}
 }
 
 func (t *TemplateStore) addDeferredTemplate(owner *TemplInfo, name string, n *parse.ListNode) error {
@@ -912,10 +967,12 @@ func (t *TemplateStore) addDeferredTemplate(owner *TemplInfo, name string, n *pa
 	}
 
 	t.templatesByPath.Set(name, &TemplInfo{
-		Fi:       owner.Fi,
-		PathInfo: owner.PathInfo,
-		D:        owner.D,
-		Template: templ,
+		Fi:             owner.Fi,
+		PathInfo:       owner.PathInfo,
+		D:              owner.D,
+		Template:       templ,
+		category:       owner.category,
+		decoratorOwner: owner.decoratorOwner,
 	})
 
 	return nil
@@ -1627,7 +1684,7 @@ func (s *TemplateStore) addTransformedTemplateSetTree(this *TemplInfo, root *par
 	return tree, nil
 }
 
-func (s *TemplateStore) parseTemplates(replace bool) error {
+func (s *TemplateStore) parseTemplates() error {
 	if err := func() error {
 		// Read and parse all templates.
 		for _, v := range s.treeMain.All() {
@@ -1635,7 +1692,7 @@ func (s *TemplateStore) parseTemplates(replace bool) error {
 				if vv.state == processingStateTransformed {
 					continue
 				}
-				if err := s.parseTemplate(vv, replace); err != nil {
+				if err := s.parseTemplate(vv); err != nil {
 					return err
 				}
 			}
@@ -1655,7 +1712,7 @@ func (s *TemplateStore) parseTemplates(replace bool) error {
 						// The regular expression used to detect if a template needs a base template has some
 						// rare false positives. Assume we don't need one.
 						vv.noBaseOf = true
-						if err := s.parseTemplate(vv, replace); err != nil {
+						if err := s.parseTemplate(vv); err != nil {
 							return err
 						}
 						continue
@@ -1677,14 +1734,14 @@ func (s *TemplateStore) parseTemplates(replace bool) error {
 		return err
 	}
 
-	// Prese shortcodes.
+	// Parse shortcodes.
 	for _, v := range s.treeShortcodes.All() {
 		for _, vv := range v {
 			for _, vvv := range vv {
 				if vvv.state == processingStateTransformed {
 					continue
 				}
-				if err := s.parseTemplate(vvv, replace); err != nil {
+				if err := s.parseTemplate(vvv); err != nil {
 					return err
 				}
 			}
@@ -2059,7 +2116,7 @@ func (best *bestMatch) isBetter(w weight, ti *TemplInfo) bool {
 	// Note that for render hook templates, we need to make
 	// the embedded render hook template win if they're a better match,
 	// e.g. render-codeblock-goat.html.
-	if best.templ.category != CategoryMarkup && best.w.w1 > 0 {
+	if (best.templ.category != CategoryMarkup || best.templ.D.Variant1 == "table") && best.w.w1 > 0 {
 		currentBestIsEmbedded := best.templ.subCategory == SubCategoryEmbedded
 		if currentBestIsEmbedded {
 			if ti.subCategory != SubCategoryEmbedded {

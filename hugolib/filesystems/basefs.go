@@ -426,16 +426,10 @@ func (d *SourceFilesystem) RealFilename(rel string) string {
 }
 
 // Contains returns whether the given filename is a member of the current filesystem.
+// It's stat-free, so it also works for deleted files.
 func (d *SourceFilesystem) Contains(filename string) bool {
-	for _, dir := range d.mounts() {
-		if !dir.IsDir() {
-			continue
-		}
-		if strings.HasPrefix(filename, dir.Meta().Filename) {
-			return true
-		}
-	}
-	return false
+	cps, _ := d.ReverseLookup(filename, false)
+	return len(cps) > 0
 }
 
 // RealDirs gets a list of absolute paths to directories starting from the given
@@ -452,6 +446,18 @@ func (d *SourceFilesystem) RealDirs(from string) []string {
 		}
 	}
 	return dirnames
+}
+
+// RealPaths returns the absolute paths of all mounts in this filesystem.
+func (d *SourceFilesystem) RealPaths(from string) []string {
+	var paths []string
+	for _, m := range d.mounts() {
+		p := filepath.Join(m.Meta().Filename, from)
+		if _, err := d.SourceFs.Stat(p); err == nil {
+			paths = append(paths, p)
+		}
+	}
+	return paths
 }
 
 // WithBaseFs allows reuse of some potentially expensive to create parts that remain

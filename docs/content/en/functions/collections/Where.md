@@ -1,5 +1,5 @@
 ---
-title: collections.Where 
+title: collections.Where
 description: Returns a slice by filtering the given slice based on a key, operator, and value.
 categories: []
 keywords: []
@@ -8,8 +8,9 @@ params:
     aliases: [where]
     returnType: '[]any'
     signatures: ['collections.Where SLICE KEY [OPERATOR] VALUE']
-aliases: [/functions/where]
 ---
+
+## Usage
 
 The `where` function returns the given slice, removing elements that do not satisfy the comparison condition. The comparison condition is composed of the `KEY`, `OPERATOR`, and `VALUE` arguments:
 
@@ -26,24 +27,24 @@ Hugo will test for equality if you do not provide an `OPERATOR` argument. For ex
 {{ $books := where hugo.Data.books "genres" "suspense" }}
 ```
 
-## Arguments
+### Arguments
 
 The where function takes three or four arguments. The `OPERATOR` argument is optional.
 
-SLICE
+`SLICE`
 : (`[]any`) A [page collection](g) or a [slice](g) of [maps](g).
 
-KEY
+`KEY`
 : (`string`) The key of the page or map value to compare with `VALUE`. With page collections, commonly used comparison keys are `Section`, `Type`, and `Params`. To compare with a member of the page `Params` map, [chain](g) the subkey as shown below:
 
   ```go-html-template
   {{ $result := where .Site.RegularPages "Params.foo" "bar" }}
   ```
 
-OPERATOR
+`OPERATOR`
 : (`string`) The logical comparison [operator](#operators).
 
-VALUE
+`VALUE`
 : (`any`) The value with which to compare. The values to compare must have comparable data types. For example:
 
 Comparison|Result
@@ -55,7 +56,7 @@ Comparison|Result
 
 When one or both of the values to compare is a slice, use the `in`, `not in`, or `intersect` operators as described below.
 
-## Operators
+### Operators
 
 Use any of the following logical operators:
 
@@ -78,21 +79,25 @@ Use any of the following logical operators:
 : (`bool`) Reports whether the given field value is less than `VALUE`.
 
 `in`
-: (`bool`) Reports whether the given field value is a member of `VALUE`. Compare string to slice, or string to string. See&nbsp;[details](/functions/collections/in).
+: (`bool`) Reports whether the given field value is a member of `VALUE`. Compare string to slice, or string to string.
 
 `not in`
-: (`bool`) Reports whether the given field value is not a member of `VALUE`. Compare string to slice, or string to string. See&nbsp;[details](/functions/collections/in).
+: (`bool`) Reports whether the given field value is not a member of `VALUE`. Compare string to slice, or string to string.
 
 `intersect`
-: (`bool`) Reports whether the given field value (a slice) contains one or more elements in common with `VALUE`. See&nbsp;[details](/functions/collections/intersect).
+: (`bool`) Reports whether the given field value (a slice) contains one or more elements in common with `VALUE`.
 
 `like`
 : (`bool`) Reports whether the given field value matches the [regular expression](g) specified in `VALUE`. Use the `like` operator to compare `string` values. The `like` operator returns `false` when comparing other data types to the regular expression.
 
-> [!note]
+## Examples
+
+The following examples demonstrate comparisons using various operators and data types.
+
+> [!NOTE]
 > The examples below perform comparisons within a page collection, but the same comparisons are applicable to a slice of maps.
 
-## String comparison
+### String comparison
 
 Compare the value of the given field to a [`string`](g):
 
@@ -101,7 +106,7 @@ Compare the value of the given field to a [`string`](g):
 {{ $pages := where .Site.RegularPages "Section" "ne" "books" }}
 ```
 
-## Numeric comparison
+### Numeric comparison
 
 Compare the value of the given field to an [`int`](g) or [`float`](g):
 
@@ -116,7 +121,7 @@ Compare the value of the given field to an [`int`](g) or [`float`](g):
 {{ $pages := where $books "Params.price" "lt" 42.67 }}
 ```
 
-## Boolean comparison
+### Boolean comparison
 
 Compare the value of the given field to a [`bool`](g):
 
@@ -129,7 +134,7 @@ Compare the value of the given field to a [`bool`](g):
 {{ $pages := where $books "Params.fiction" "ne" false }}
 ```
 
-## Member comparison
+### Member comparison
 
 Compare a [`scalar`](g) to a [`slice`](g).
 
@@ -142,7 +147,7 @@ For example, to return a slice of pages where the `color` page parameter is eith
 {{ $pages := where $fruit "Params.color" "in" $colors }}
 ```
 
-To return a slice of pages where the "color" page parameter is neither "red" nor "yellow":
+To return a slice of pages where the `color` page parameter is neither `red` nor `yellow`:
 
 ```go-html-template
 {{ $fruit := where site.RegularPages "Section" "eq" "fruit" }}
@@ -151,11 +156,11 @@ To return a slice of pages where the "color" page parameter is neither "red" nor
 {{ $pages := where $fruit "Params.color" "not in" $colors }}
 ```
 
-## Intersection comparison
+### Intersection comparison
 
 Compare a `slice` to a `slice`, returning elements with common values. This is frequently used when comparing taxonomy terms.
 
-For example, to return a slice of pages where any of the terms in the "genres" taxonomy are "suspense" or "romance":
+For example, to return a slice of pages where any of the terms in the `genres` taxonomy are "suspense" or "romance":
 
 ```go-html-template
 {{ $books := where site.RegularPages "Section" "eq" "books" }}
@@ -164,9 +169,9 @@ For example, to return a slice of pages where any of the terms in the "genres" t
 {{ $pages := where $books "Params.genres" "intersect" $genres }}
 ```
 
-## Regular expression comparison
+### Regular expression comparison
 
-To return a slice of pages where the "author" page parameter begins with either "victor" or "Victor":
+To return a slice of pages where the `author` page parameter begins with either "victor" or "Victor":
 
 ```go-html-template
 {{ $pages := where .Site.RegularPages "Params.author" "like" `(?i)^victor` }}
@@ -174,14 +179,16 @@ To return a slice of pages where the "author" page parameter begins with either 
 
 {{% include "/_common/functions/regular-expressions.md" %}}
 
-> [!note]
+> [!NOTE]
 > Use the `like` operator to compare string values. Comparing other data types will result in an empty slice.
 
-## Date comparison
+### Date comparison
 
-### Predefined dates
+Compare predefined front matter dates, or custom front matter dates.
 
-There are four predefined front matter dates: [`date`], [`publishDate`], [`lastmod`], and [`expiryDate`]. Regardless of the front matter data format (TOML, YAML, or JSON) these are [`time.Time`] values, allowing precise comparisons.
+#### Predefined dates
+
+There are four predefined front matter dates: [`date`][], [`publishDate`][], [`lastmod`][], and [`expiryDate`][]. Regardless of the front matter data format (TOML, YAML, or JSON) these are [`time.Time`][] values, allowing precise comparisons.
 
 For example, to return a slice of pages that were created before the current year:
 
@@ -190,18 +197,18 @@ For example, to return a slice of pages that were created before the current yea
 {{ $pages := where .Site.RegularPages "Date" "lt" $startOfYear }}
 ```
 
-### Custom dates
+#### Custom dates
 
 With custom front matter dates, the comparison depends on the front matter data format (TOML, YAML, or JSON).
 
-> [!note]
+> [!NOTE]
 > Using TOML for pages with custom front matter dates enables precise date comparisons.
 
-With TOML, date values are first-class citizens. TOML has a date data type while JSON and YAML do not. If you quote a TOML date, it is a string. If you do not quote a TOML date value, it is [`time.Time`] value, enabling precise comparisons.
+With TOML, date values are first-class citizens. TOML has a date data type while JSON and YAML do not. If you quote a TOML date, it is a string. If you do not quote a TOML date value, it is [`time.Time`][] value, enabling precise comparisons.
 
 In the TOML example below, note that the event date is not quoted.
 
-```text {file="content/events/2024-user-conference.md"}
+```md {file="content/events/2024-user-conference.md"}
 +++
 title = '2024 User Conference"
 eventDate = 2024-04-01
@@ -227,7 +234,7 @@ When working with YAML or JSON, or quoted TOML values, custom dates are strings;
 {{ end }}
 ```
 
-## Nil comparison
+### Nil comparison
 
 To return a slice of pages where the "color" parameter is present in front matter, compare to `nil`:
 
@@ -243,7 +250,7 @@ To return a slice of pages where the "color" parameter is not present in front m
 
 In both examples above, note that `nil` is not quoted.
 
-## Nested comparison
+### Nested comparison
 
 These are equivalent:
 
@@ -256,9 +263,9 @@ These are equivalent:
 {{ $pages := where (where .Site.RegularPages "Type" "tutorials") "Params.level" "eq" "beginner" }}
 ```
 
-## Portable section comparison
+### Portable section comparison
 
-Useful for theme authors, avoid hardcoding section names by using the `where` function with the [`MainSections`] method on a `Site` object.
+Useful for theme authors, avoid hardcoding section names by using the `where` function with the [`MainSections`][] method on a `Site` object.
 
 ```go-html-template
 {{ $pages := where .Site.RegularPages "Section" "in" .Site.MainSections }}
@@ -272,11 +279,11 @@ mainSections = ['blog','galleries']
 
 If `mainSections` is not defined in your project configuration, the `MainSections` method returns a slice with one element---the top-level section with the most pages.
 
-## Boolean/undefined comparison
+### Boolean/undefined comparison
 
-Consider this site content:
+Consider this project structure:
 
-```text
+```tree
 content/
 ├── posts/
 │   ├── _index.md
@@ -288,7 +295,7 @@ content/
 
 The first two pages have an "exclude" field in front matter, but the last page does not. When testing for _equality_, the third page is _excluded_ from the result. When testing for _inequality_, the third page is _included_ in the result.
 
-### Equality test
+#### Equality test
 
 This template:
 
@@ -321,12 +328,12 @@ This template:
 Is rendered to:
 
 ```html
-<ul>  
+<ul>
   <li><a href="/posts/post-2/">Post 2</a></li>
 </ul>
 ```
 
-### Inequality test
+#### Inequality test
 
 This template:
 
@@ -369,8 +376,8 @@ Is rendered to:
 To exclude a page with an undefined field from a boolean _inequality_ test:
 
 1. Create a slice using a boolean comparison
-1. Create a slice using a nil comparison
-1. Subtract the second slice from the first slice using the [`collections.Complement`] function.
+1. Create a slice using a `nil` comparison
+1. Subtract the second slice from the first slice using the [`collections.Complement`][] function.
 
 This template:
 
@@ -412,8 +419,8 @@ Is rendered to:
 </ul>
 ```
 
+[`MainSections`]: /methods/site/mainsections/
 [`collections.Complement`]: /functions/collections/complement/
 [`date`]: /methods/page/date/
 [`lastmod`]: /methods/page/lastmod/
-[`MainSections`]: /methods/site/mainsections/
 [`time.Time`]: https://pkg.go.dev/time#Time

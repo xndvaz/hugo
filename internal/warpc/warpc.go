@@ -28,9 +28,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bep/helpers/maphelpers"
 	"github.com/bep/textandbinarywriter"
 
-	"github.com/gohugoio/hugo/common/hmaps"
 	"github.com/gohugoio/hugo/common/hstrings"
 	"github.com/gohugoio/hugo/common/hugio"
 	"golang.org/x/sync/errgroup"
@@ -48,11 +48,28 @@ const (
 
 const currentVersion = 1
 
+// GetWASMDeps returns version information for the C libraries bundled as WASM.
+func GetWASMDeps() [][2]string {
+	return [][2]string{
+		{"aomedia.googlesource.com/aom", aomVersion},
+		{"code.videolan.org/videolan/dav1d", dav1dVersion},
+		{"github.com/AOMediaCodec/libavif", libavifVersion},
+		{"github.com/KaTeX/KaTeX", katexVersion},
+		{"github.com/webmproject/libwebp", libwebpVersion},
+	}
+}
+
 //go:embed wasm/quickjs.wasm
 var quickjsWasm []byte
 
+// The import name used by Javy's dynamically linked modules.
+const quickjsPluginName = "javy-default-plugin-v4"
+
 //go:embed wasm/webp.wasm
 var webpWasm []byte
+
+//go:embed wasm/avif.wasm
+var avifWasm []byte
 
 // Header is in both the request and response.
 type Header struct {
@@ -253,7 +270,7 @@ func (d *dispatcher[Q, R]) newCall(q Message[Q]) (*call[Q, R], error) {
 	if err := q.init(); err != nil {
 		return nil, err
 	}
-	responseKinds := hmaps.NewMap[string, bool]()
+	responseKinds := maphelpers.NewConcurrentMap[string, bool]()
 	for _, rk := range q.Header.ResponseKinds {
 		responseKinds.Set(rk, true)
 	}
@@ -345,7 +362,8 @@ func (d *dispatcher[Q, R]) inputBlobs() error {
 					call.done()
 				}
 				return nil
-			}); err != nil {
+			},
+		); err != nil {
 			inputErr = err
 			break
 		}
@@ -381,7 +399,8 @@ func (d *dispatcher[Q, R]) inputJSON() error {
 					call.done()
 				}
 				return nil
-			}); err != nil {
+			},
+		); err != nil {
 			inputErr = err
 			break
 		}
@@ -416,7 +435,11 @@ func (d *dispatcher[Q, R]) pendingCall(id uint32) *call[Q, R] {
 	defer d.mu.Unlock()
 	c, ok := d.pending[id]
 	if !ok {
-		panic(fmt.Errorf("call with ID %d not found", id))
+		// The WASM module wrote a response for an ID we never sent. This means it
+		// broke the RPC protocol, e.g. a corrupted stream after an error path that
+		// failed to drain its input or write a response. This is a bug in the
+		// module and should be reported.
+		panic(fmt.Errorf("received response for unknown call ID %d: WASM module violated the RPC protocol", id))
 	}
 	return c
 }
@@ -424,7 +447,7 @@ func (d *dispatcher[Q, R]) pendingCall(id uint32) *call[Q, R] {
 type call[Q, R any] struct {
 	request       Message[Q]
 	response      Message[R]
-	responseKinds *hmaps.Map[string, bool]
+	responseKinds *maphelpers.ConcurrentMap[string, bool]
 	err           error
 	donec         chan *call[Q, R]
 }
@@ -448,7 +471,7 @@ func (call *call[Q, R]) done() {
 // Binary represents a WebAssembly binary.
 type Binary struct {
 	// The name of the binary.
-	// For 	quickjs, this must match the instance import name, "javy_quickjs_provider_v2".
+	// For quickjs, this must match the instance import name, see quickjsPluginName.
 	// For the main module, we only use this for caching.
 	Name string
 
@@ -491,6 +514,9 @@ func (o *Options) init() error {
 	if o.Warnf == nil {
 		o.Warnf = func(format string, v ...any) {
 		}
+	}
+	if o.Memory <= 0 {
+		o.Memory = 32 // 32 MiB
 	}
 	return nil
 }
@@ -562,6 +588,9 @@ func (p *dispatcherPool[Q, R]) Err() error {
 	}
 }
 
+// Workaround for data race, see https://github.com/wazero/wazero/issues/2532
+var wazeroCacheMu sync.Mutex
+
 func newDispatcher[Q, R any](opts Options) (*dispatcherPool[Q, R], error) {
 	if opts.Ctx == nil {
 		opts.Ctx = context.Background()
@@ -587,8 +616,11 @@ func newDispatcher[Q, R any](opts Options) (*dispatcherPool[Q, R], error) {
 	// Page size is 64KB.
 	numPages := opts.Memory * 1024 / 64
 	runtimeConfig := wazero.NewRuntimeConfig().WithMemoryLimitPages(uint32(numPages))
+	runtimeConfig = runtimeConfig.WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesExceptionHandling | experimental.CoreFeaturesThreads)
 
 	if opts.CompilationCacheDir != "" {
+		wazeroCacheMu.Lock()
+		defer wazeroCacheMu.Unlock()
 		compilationCache, err := wazero.NewCompilationCacheWithDir(opts.CompilationCacheDir)
 		if err != nil {
 			return nil, err
@@ -671,7 +703,8 @@ func newDispatcher[Q, R any](opts Options) (*dispatcherPool[Q, R], error) {
 					if err != nil {
 						return toErr("quickjs", errBuff, err)
 					}
-					ctx = experimental.WithImportResolver(ctx,
+					ctx = experimental.WithImportResolver(
+						ctx,
 						func(name string) api.Module {
 							if name == opts.Runtime.Name {
 								return runtimeInstance
@@ -744,7 +777,9 @@ func newDispatcher[Q, R any](opts Options) (*dispatcherPool[Q, R], error) {
 		}
 
 		for _, d := range dp.dispatchers {
-			if err := d.inGroup.Wait(); err != nil {
+			// ErrShutdown is expected here; since Go 1.27 (json/v2), Decode
+			// surfaces the read error from the pipes we just closed.
+			if err := d.inGroup.Wait(); err != nil && err != ErrShutdown {
 				return err
 			}
 		}
@@ -788,6 +823,7 @@ func (d *lazyDispatcher[Q, R]) start() (Dispatcher[Q, R], error) {
 type Dispatchers struct {
 	katex *lazyDispatcher[KatexInput, KatexOutput]
 	webp  *lazyDispatcher[WebpInput, WebpOutput]
+	avif  *lazyDispatcher[AvifInput, AvifOutput]
 }
 
 func (d *Dispatchers) Katex() (Dispatcher[KatexInput, KatexOutput], error) {
@@ -798,9 +834,21 @@ func (d *Dispatchers) Webp() (Dispatcher[WebpInput, WebpOutput], error) {
 	return d.webp.start()
 }
 
+func (d *Dispatchers) Avif() (Dispatcher[AvifInput, AvifOutput], error) {
+	return d.avif.start()
+}
+
 func (d *Dispatchers) NewWepCodec() (*WebpCodec, error) {
 	return &WebpCodec{
-		d: d.Webp,
+		d:           d.Webp,
+		memoryLimit: int64(d.webp.opts.Memory) << 20,
+	}, nil
+}
+
+func (d *Dispatchers) NewAvifCodec() (*AvifCodec, error) {
+	return &AvifCodec{
+		d:           d.Avif,
+		memoryLimit: int64(d.avif.opts.Memory) << 20,
 	}, nil
 }
 
@@ -825,25 +873,30 @@ func (d *Dispatchers) Close() error {
 // AllDispatchers creates all the dispatchers for the warpc package.
 // Note that the individual dispatchers are started lazily.
 // Remember to call Close on the returned Dispatchers when done.
-func AllDispatchers(katexOpts, webpOpts Options) *Dispatchers {
+func AllDispatchers(katexOpts, webpOpts, avifOpts Options) *Dispatchers {
 	if err := katexOpts.init(); err != nil {
 		panic(err)
 	}
 	if err := webpOpts.init(); err != nil {
 		panic(err)
 	}
+	if err := avifOpts.init(); err != nil {
+		panic(err)
+	}
 	if katexOpts.Runtime.Data == nil {
-		katexOpts.Runtime = Binary{Name: "javy_quickjs_provider_v2", Data: quickjsWasm}
+		katexOpts.Runtime = Binary{Name: quickjsPluginName, Data: quickjsWasm}
 	}
 	if katexOpts.Main.Data == nil {
 		katexOpts.Main = Binary{Name: "renderkatex", Data: katexWasm}
 	}
 
 	webpOpts.Main = Binary{Name: "webp", Data: webpWasm}
+	avifOpts.Main = Binary{Name: "avif", Data: avifWasm}
 
 	dispatchers := &Dispatchers{
 		katex: &lazyDispatcher[KatexInput, KatexOutput]{opts: katexOpts},
 		webp:  &lazyDispatcher[WebpInput, WebpOutput]{opts: webpOpts},
+		avif:  &lazyDispatcher[AvifInput, AvifOutput]{opts: avifOpts},
 	}
 
 	return dispatchers

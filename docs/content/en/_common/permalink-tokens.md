@@ -44,34 +44,27 @@ _comment: Do not remove front matter.
 : The `slug` as defined in front matter, else the `title` as defined in front matter, else the automatic title. Hugo generates titles automatically for section, taxonomy, and term pages that are not backed by a file.
 
 `:filename`
-: The content's file name without extension, applicable to the `page` page kind.
-
-  {{< deprecated-in v0.144.0 >}}
-  The `:filename` token has been deprecated. Use `:contentbasename` instead.
-  {{< /deprecated-in >}}
+: {{< deprecated-in v0.144.0 />}}
+: Use the [`:contentbasename`](#contentbasename) token instead.
 
 `:slugorfilename`
-: The `slug` as defined in front matter, else the content's file name without extension, applicable to the `page` page kind.
-
-  {{< deprecated-in v0.144.0 >}}
-  The `:slugorfilename` token has been deprecated. Use `:slugorcontentbasename` instead.
-  {{< /deprecated-in >}}
+: {{< deprecated-in v0.144.0 />}}
+: Use the [`:slugorcontentbasename`](#slugorcontentbasename) token instead.
 
 `:contentbasename`
 : {{< new-in 0.144.0 />}}
-: The [content base name].
-
-[content base name]: /methods/page/file/#contentbasename
+: The [content base name][].
 
 `:slugorcontentbasename`
 : {{< new-in 0.144.0 />}}
-: The `slug` as defined in front matter, else the [content base name].
+: The `slug` as defined in front matter, else the [content base name][].
 
-For time-related values, you can also use the layout string components defined in Go's [time package]. For example:
-
-[time package]: https://pkg.go.dev/time#pkg-constants
+For time-related values, you can also use the layout string components defined in Go's [time package][]. For example:
 
 {{< code-toggle file=hugo >}}
 permalinks:
   posts: /:06/:1/:2/:title/
 {{< /code-toggle >}}
+
+[content base name]: /methods/page/file/#contentbasename
+[time package]: https://pkg.go.dev/time#pkg-constants

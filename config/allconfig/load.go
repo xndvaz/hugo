@@ -22,10 +22,10 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/gobwas/glob"
 	"github.com/gohugoio/hugo/common/herrors"
 	"github.com/gohugoio/hugo/common/hexec"
 	"github.com/gohugoio/hugo/common/hmaps"
+	"github.com/gohugoio/hugo/common/hstrings"
 	"github.com/gohugoio/hugo/common/hugo"
 	"github.com/gohugoio/hugo/common/loggers"
 	"github.com/gohugoio/hugo/common/paths"
@@ -34,6 +34,7 @@ import (
 	"github.com/gohugoio/hugo/helpers"
 	hglob "github.com/gohugoio/hugo/hugofs/hglob"
 	"github.com/gohugoio/hugo/modules"
+	"github.com/gohugoio/hugo/modules/npm"
 	"github.com/gohugoio/hugo/parser/metadecoders"
 	"github.com/spf13/afero"
 )
@@ -88,12 +89,16 @@ func LoadConfig(d ConfigSourceDescriptor) (configs *Configs, err error) {
 			return nil, fmt.Errorf("failed to create config from modules config: %w", err)
 		}
 		configs.LoadingInfo.ConfigFiles = append(configs.LoadingInfo.ConfigFiles, l.ModulesConfigFiles...)
-	} else if err := configs.transientErr(); err != nil {
+	} else if err := configs.transientErr(); err != nil && !d.IgnoreModuleDoesNotExist {
 		return nil, fmt.Errorf("failed to create config: %w", err)
 	}
 
 	configs.Modules = moduleConfig.AllModules
 	configs.ModulesClient = modulesClient
+
+	if !d.SkipNpmCheck && npm.NpmPackNeedsUpdate(d.Fs, configs.Modules) {
+		d.Logger.Warnln(`npm dependencies are out of sync, please run "hugo mod npm pack" (you may also want to run "npm install" after that)`)
+	}
 
 	if err := configs.Init(d.Fs, d.Logger); err != nil {
 		return nil, fmt.Errorf("failed to init config: %w", err)
@@ -127,6 +132,9 @@ type ConfigSourceDescriptor struct {
 
 	// If set, this will be used to ignore the module does not exist error.
 	IgnoreModuleDoesNotExist bool
+
+	// If set, skip the npm pack staleness check (used by hugo mod npm pack).
+	SkipNpmCheck bool
 }
 
 func (d ConfigSourceDescriptor) configFilenames() []string {
@@ -187,6 +195,13 @@ func (l configLoader) normalizeCfg(cfg config.Provider) error {
 		hugo.Deprecate("project config minify", "Use minify.minifyOutput instead.", "v0.150.0")
 		if b {
 			cfg.Set("minify", hmaps.Params{"minifyOutput": true})
+		}
+	}
+
+	if b, ok := cfg.Get("cleanDestinationDir").(bool); ok {
+		hugo.Deprecate("project config cleanDestinationDir", "Use build.cleanDestinationDir.enable instead.", "v0.167.0")
+		if b {
+			cfg.Set("build.cleanDestinationDir.enable", true)
 		}
 	}
 
@@ -443,7 +458,7 @@ func (l *configLoader) loadModules(configs *Configs, ignoreModuleDoesNotExist bo
 
 	cfg := configs.LoadingInfo.Cfg
 
-	var ignoreVendor glob.Glob
+	var ignoreVendor hstrings.Matcher
 	if s := conf.IgnoreVendorPaths; s != "" {
 		ignoreVendor, _ = hglob.GetGlob(hglob.NormalizePath(s))
 	}

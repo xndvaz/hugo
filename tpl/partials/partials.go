@@ -17,9 +17,9 @@ package partials
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
-	"io"
 	"strings"
 	"time"
 
@@ -77,7 +77,8 @@ func New(deps *deps.Deps) *Namespace {
 		func(...any) bool {
 			cache.clear()
 			return false
-		})
+		},
+	)
 
 	return &Namespace{
 		deps:           deps,
@@ -89,18 +90,6 @@ func New(deps *deps.Deps) *Namespace {
 type Namespace struct {
 	deps           *deps.Deps
 	cachedPartials *partialCache
-}
-
-// contextWrapper makes room for a return value in a partial invocation.
-type contextWrapper struct {
-	Arg    any
-	Result any
-}
-
-// Set sets the return value and returns an empty string.
-func (c *contextWrapper) Set(in any) string {
-	c.Result = in
-	return ""
 }
 
 // Include executes the named partial.
@@ -122,6 +111,10 @@ func (ns *Namespace) Include(ctx context.Context, name string, contextList ...an
 }
 
 func (ns *Namespace) include(ctx context.Context, name string, dataList ...any) includeResult {
+	name, err := ns.deps.TemplateStore.ResolvePartialName(ctx, name)
+	if err != nil {
+		return includeResult{err: err}
+	}
 	v, err := ns.lookup(name)
 	if err != nil {
 		return includeResult{err: err}
@@ -159,39 +152,27 @@ func (ns *Namespace) doInclude(ctx context.Context, key string, templ *tplimpl.T
 		data = dataList[0]
 	}
 
-	info := templ.ParseInfo
+	b := bp.GetBuffer()
+	defer bp.PutBuffer(b)
 
-	var w io.Writer
-
-	if info.HasReturn {
-
-		// Wrap the context sent to the template to capture the return value.
-		// Note that the template is rewritten to make sure that the dot (".")
-		// and the $ variable points to Arg.
-		data = &contextWrapper{
-			Arg: data,
+	if err := ns.deps.GetTemplateStore().ExecuteWithContextAndKey(ctx, key, templ, b, data); err != nil {
+		var rerr *texttemplate.ReturnError
+		if !errors.As(err, &rerr) {
+			return includeResult{err: err}
 		}
-
-		// We don't care about any template output.
-		w = io.Discard
-	} else {
-		b := bp.GetBuffer()
-		defer bp.PutBuffer(b)
-		w = b
-	}
-
-	if err := ns.deps.GetTemplateStore().ExecuteWithContextAndKey(ctx, key, templ, w, data); err != nil {
-		return includeResult{err: err}
+		// The partial has a {{ return <value> }}; any rendered output is discarded.
+		return includeResult{
+			name:   templ.Name(),
+			result: rerr.Value,
+		}
 	}
 
 	var result any
 
-	if ctx, ok := data.(*contextWrapper); ok {
-		result = ctx.Result
-	} else if _, ok := templ.Template.(*texttemplate.Template); ok {
-		result = w.(fmt.Stringer).String()
+	if _, ok := templ.Template.(*texttemplate.Template); ok {
+		result = b.String()
 	} else {
-		result = template.HTML(w.(fmt.Stringer).String())
+		result = template.HTML(b.String())
 	}
 
 	return includeResult{
@@ -204,11 +185,18 @@ func (ns *Namespace) doInclude(ctx context.Context, key string, templ *tplimpl.T
 // Note that ctx is provided by Hugo, not the end user.
 func (ns *Namespace) IncludeCached(ctx context.Context, name string, context any, variants ...any) (any, error) {
 	start := time.Now()
-	key := partialCacheKey{
-		Name:     name,
-		Variants: variants,
+	name, err := ns.deps.TemplateStore.ResolvePartialName(ctx, name)
+	if err != nil {
+		return nil, err
 	}
-	keyString := key.Key()
+	keyString := name
+	if len(variants) > 0 {
+		key := partialCacheKey{
+			Name:     name,
+			Variants: variants,
+		}
+		keyString = key.Key()
+	}
 
 	depsManagerIn := tpl.Context.GetDependencyManagerInCurrentScope(ctx)
 	ti, err := ns.lookup(name)
@@ -234,6 +222,8 @@ func (ns *Namespace) IncludeCached(ctx context.Context, name string, context any
 			depsManagerShared = identity.NewManager()
 			ctx = tpl.Context.DependencyManagerScopedProvider.Set(ctx, depsManagerShared.(identity.DependencyManagerScopedProvider))
 		}
+		// Mark the ctx so templates.Defer can reject being called from a cached body.
+		ctx = tpl.Context.IsInPartialCached.Set(ctx, true)
 		r := ns.doInclude(ctx, keyString, ti, context)
 		if ns.deps.Conf.Watching() {
 			r.mangager = depsManagerShared

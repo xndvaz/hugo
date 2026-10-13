@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bep/logg"
 	"github.com/gobuffalo/flect"
 	"github.com/gohugoio/hugo/hugofs"
 	"github.com/gohugoio/hugo/hugofs/files"
@@ -96,6 +95,13 @@ func (m *pageMetaSource) String() string {
 		return fmt.Sprintf("pageMetaSource(%s, %s)", m.f.FileInfo().Meta().PathInfo, m.f.FileInfo().Meta().Filename)
 	}
 	return fmt.Sprintf("pageMetaSource(%s)", m.pathInfo)
+}
+
+func (m *pageMetaSource) contentWeight() int {
+	if m.f == nil {
+		return 0
+	}
+	return m.f.FileInfo().Meta().Weight
 }
 
 func (m *pageMetaSource) nodeCategoryPage() {
@@ -236,6 +242,17 @@ func (m *pageMetaSource) initFrontMatter(h *HugoSites) error {
 
 	if err := m.pageConfigSource.SetMetaPreFromMap(ext, m.pi.frontMatter, h.Log, h.Conf); err != nil {
 		return err
+	}
+
+	// Gate the content format against the security policy. The body of a
+	// content file is treated as untrusted; text/html is denied by default
+	// because Hugo emits it verbatim and that is an XSS sink. This applies
+	// to pages emitted by content adapters too -- the adapter is trusted
+	// but the data it pulls in may not be.
+	if m.f != nil && !m.pageConfigSource.ContentMediaType.IsZero() {
+		if err := h.Deps.ExecHelper.Sec().CheckAllowedContent(m.pageConfigSource.ContentMediaType.Type); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -458,7 +475,12 @@ func (m *pageMeta) Name() string {
 }
 
 func (m *pageMeta) IsNode() bool {
-	return !m.IsPage()
+	hugo.Deprecate(".Page.IsNode", "Use .Page.IsBranch or not .Page.IsPage instead.", "v0.163.0")
+	return m.IsBranch()
+}
+
+func (m *pageMeta) IsBranch() bool {
+	return kinds.IsBranch(m.Kind())
 }
 
 func (m *pageMeta) IsPage() bool {
@@ -655,9 +677,9 @@ params:
 		loki := strings.ToLower(k)
 
 		if loki == "params" {
-			vv, err := hmaps.ToStringMapE(v)
+			vv, err := hmaps.ToParamsAndPrepare(v)
 			if err != nil {
-				return err
+				return fmt.Errorf("front matter field %q must be a map: %w", k, err)
 			}
 			userParams = vv
 			delete(pcfg.Params, k)
@@ -675,11 +697,6 @@ params:
 
 		if ps.s.frontmatterHandler.IsDateKey(loki) {
 			continue
-		}
-
-		if loki == "path" || loki == "kind" || loki == "lang" {
-			// See issue 12484.
-			hugo.DeprecateLevelMin(loki+" in front matter", "", "v0.144.0", logg.LevelWarn)
 		}
 
 		switch loki {

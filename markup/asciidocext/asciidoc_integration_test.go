@@ -264,7 +264,7 @@ defaultContentLanguageInSubdir = DEFAULT_CONTENT_LANGUAGE_IN_SUBDIR
 dir = 'DIAGRAM_CACHEDIR'
 
 [security.exec]
-  allow = ['^((dart-)?sass|git|go|npx|postcss|tailwindcss|asciidoctor)$']`
+  allow = ['^((dart-)?sass|git|go|node|postcss|tailwindcss|asciidoctor)$']`
 
 func validatePublishedSite_1(b *hugolib.IntegrationTestBuilder) {
 	for _, file := range []publishedContentFile{
@@ -1152,4 +1152,60 @@ func validatePublishedSite_20(b *hugolib.IntegrationTestBuilder) {
 	} {
 		b.AssertFileExists(path, true)
 	}
+}
+
+// See issue 15121
+func TestAsciiDocHTML5BackendTOC(t *testing.T) {
+	if !htesting.IsRealCI() {
+		t.Skip()
+	}
+	if ok, err := asciidocext.Supports(); !ok {
+		t.Skip(err)
+	}
+
+	t.Cleanup(func() {
+		resetDefaultAsciiDocExtConfig()
+	})
+
+	files := `
+-- hugo.toml --
+disableKinds = ['home','rss','section','sitemap','taxonomy','term']
+
+[markup.asciidocExt]
+  backend    = 'html5s'
+  extensions = ['asciidoctor-html5s']
+
+[security.exec]
+  allow = ['^asciidoctor$']
+-- content/p1.adoc --
+---
+title: p1
+---
+
+:toc:
+
+## Section 1
+
+### Section 1.1
+
+### Section 1.2
+
+## Section 2
+-- layouts/page.html --
+{{ .TableOfContents }}
+`
+
+	b := hugolib.Test(t, files)
+
+	b.AssertFileContentExact("public/p1/index.html", `<nav id="TableOfContents">
+  <ul>
+    <li><a href="#_section_1">Section 1</a>
+      <ul>
+        <li><a href="#_section_1_1">Section 1.1</a></li>
+        <li><a href="#_section_1_2">Section 1.2</a></li>
+      </ul>
+    </li>
+    <li><a href="#_section_2">Section 2</a></li>
+  </ul>
+</nav>`)
 }

@@ -47,6 +47,11 @@ type BuildClient struct {
 	CssMode bool
 }
 
+// Spec returns the resources.Spec for this client.
+func (c *BuildClient) Spec() *resources.Spec {
+	return c.rs
+}
+
 // Build builds the given JavaScript resources using esbuild with the given options.
 func (c *BuildClient) Build(opts Options) (api.BuildResult, error) {
 	dependencyManager := opts.DependencyManager
@@ -212,7 +217,12 @@ func (c *BuildClient) Build(opts Options) (api.BuildResult, error) {
 			}
 
 			if !strings.HasPrefix(s, PrefixHugoVirtual) {
-				if !filepath.IsAbs(s) {
+				// A leading slash marks a synthetic import key rooted in Hugo's
+				// virtual namespace (see paths.AddLeadingSlash in batch.go); it is
+				// not an OutDir-relative path. filepath.IsAbs only reports true for
+				// such paths on Unix, so check it explicitly to behave the same on
+				// Windows.
+				if !filepath.IsAbs(s) && !strings.HasPrefix(s, "/") {
 					s = filepath.Join(opts.OutDir, s)
 				}
 			}

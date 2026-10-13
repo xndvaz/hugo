@@ -191,7 +191,7 @@ type SitesMatrixAndComplements struct {
 
 // MatchSiteVector checks whether the site vector matches the sites matrix.
 func (p *SitesMatrixAndComplements) MatchSiteVector(siteVector sitesmatrix.Vector) bool {
-	return p.SitesMatrix.HasAnyVector(siteVector)
+	return p.SitesMatrix.HasVector(siteVector)
 }
 
 // MatchLanguageCoarse checks whether the language dimension matches either
@@ -213,6 +213,14 @@ func (p *SitesMatrixAndComplements) MatchRoleCoarse(siteVector sitesmatrix.Vecto
 func (p *SitesMatrixAndComplements) MatchVersionCoarse(siteVector sitesmatrix.Vector) bool {
 	i := siteVector.Version()
 	return p.SitesMatrix.HasVersion(i) || p.SitesComplements.HasVersion(i)
+}
+
+func (p *SitesMatrixAndComplements) MatchSiteVectorCoarse(siteVector sitesmatrix.Vector) bool {
+	return p.MatchLanguageCoarse(siteVector) && p.MatchSiteVectorCoarseExcludeLanguage(siteVector)
+}
+
+func (p *SitesMatrixAndComplements) MatchSiteVectorCoarseExcludeLanguage(siteVector sitesmatrix.Vector) bool {
+	return p.MatchRoleCoarse(siteVector) && p.MatchVersionCoarse(siteVector)
 }
 
 func DefaultPageConfig() *PageConfigLate {
@@ -387,7 +395,7 @@ func (p *PageConfigEarly) CompileForPagesFromDataPre(basePath string, logger log
 
 	// Note that NormalizePathStringBasic will make sure that we don't preserve the unnormalized path.
 	// We do that when we create pages from the file system; mostly for backward compatibility,
-	// but also because people tend to use use the filename to name their resources (with spaces and all),
+	// but also because people tend to use the filename to name their resources (with spaces and all),
 	// and this isn't relevant when creating resources from an API where it's easy to add textual meta data.
 	p.Path = paths.NormalizePathStringBasic(p.Path)
 
@@ -491,7 +499,7 @@ func (rc *ResourceConfig) Compile(basePath string, fim hugofs.FileMetaInfo, conf
 
 	// Note that NormalizePathStringBasic will make sure that we don't preserve the unnormalized path.
 	// We do that when we create resources from the file system; mostly for backward compatibility,
-	// but also because people tend to use use the filename to name their resources (with spaces and all),
+	// but also because people tend to use the filename to name their resources (with spaces and all),
 	// and this isn't relevant when creating resources from an API where it's easy to add textual meta data.
 	rc.Path = paths.NormalizePathStringBasic(path.Join(basePath, rc.Path))
 	rc.PathInfo = conf.PathParser().Parse(files.ComponentFolderContent, rc.Path)
@@ -555,7 +563,10 @@ func (s Source) ValueAsString() string {
 }
 
 func (s Source) ValueAsOpenReadSeekCloser() hugio.OpenReadSeekCloser {
-	return hugio.NewOpenReadSeekCloser(hugio.NewReadSeekerNoOpCloserFromString(s.ValueAsString()))
+	content := s.ValueAsString()
+	return func() (hugio.ReadSeekCloser, error) {
+		return hugio.NewReadSeekerNoOpCloserFromString(content), nil
+	}
 }
 
 // FrontMatterOnlyValues holds values that can only be set via front matter.

@@ -16,8 +16,8 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: [1.25.x, 1.26.x]
-        os: [ubuntu-latest, windows-latest] # macos disabled for now because of disk space issues.
+        go-version: [1.27.x]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - if: matrix.os == 'ubuntu-latest'
@@ -32,35 +32,39 @@ jobs:
           docker-images: true
           swap-storage: true
       - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install Go
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: ${{ matrix.go-version }}
           check-latest: true
           cache: true
-          cache-dependency-path: |
-            **/go.sum
-            **/go.mod
+      - name: Install Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
       - name: Install Ruby
-        uses: ruby/setup-ruby@8aeb6ff8030dd539317f8e1769a044873b56ea71 # v1.268.0
+        uses: ruby/setup-ruby@7372622e62b60b3cb750dcd2b9e32c247ffec26a # v1.302.0
         with:
           ruby-version: "3.4.5"
       - name: Install Ruby gems
         run: |
           gem install asciidoctor -v "2.0.26"
           gem install asciidoctor-diagram -v "3.1.0"
+          gem install asciidoctor-html5s -v "0.5.1"
       - name: Install GoAT
         run: go install github.com/blampe/goat/cmd/goat@177de93b192b8ffae608e5d9ec421cc99bf68402
       - name: Install Python
-        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.x"
       - name: Install Mage
         run: go install github.com/magefile/mage@v1.15.0
+      - name: Install gotmplfmt
+        run: go install github.com/gohugoio/gotmplfmt@latest
       - name: Install docutils
         run: |
-          pip install docutils
+          pip install docutils Pygments
           rst2html --version
       - if: matrix.os == 'ubuntu-latest'
         name: Install pandoc on Linux
@@ -103,7 +107,15 @@ jobs:
           echo  "$env:GITHUB_WORKSPACE/dart-sass/" | Out-File -FilePath $Env:GITHUB_PATH -Encoding utf-8 -Append
       - if: matrix.os == 'ubuntu-latest'
         name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+        #run: go install honnef.co/go/tools/cmd/staticcheck@latest
+        # Temporary workaround for https://github.com/dominikh/go-tools/issues/1832
+        run: |
+          cd $(mktemp -d) && go mod init tmp
+          go get honnef.co/go/tools/cmd/staticcheck@latest golang.org/x/tools@latest                     
+          go build -o $(go env GOPATH)/bin/staticcheck honnef.co/go/tools/cmd/staticcheck
+      - if: matrix.os == 'ubuntu-latest'
+        name: Check embedded go template formatting
+        run: "diff <(gotmplfmt -d tpl/tplimpl/embedded/templates) <(printf '')"
       - if: matrix.os == 'ubuntu-latest'
         name: Run staticcheck
         run: |
@@ -123,7 +135,11 @@ jobs:
         run: |
           mage -v test
         env:
-          HUGO_BUILD_TAGS: extended,withdeploy
+          HUGO_BUILD_TAGS: withdeploy
+      - if: matrix.os == 'ubuntu-latest'
+        name: Test 386
+        run: |
+          mage -v test386
       - if: matrix.os == 'ubuntu-latest'
         name: Build for dragonfly
         run: |

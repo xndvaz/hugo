@@ -19,7 +19,6 @@ import (
 	"iter"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -174,19 +173,11 @@ func (ps *pageState) Param(key any) (any, error) {
 	return resource.Param(ps, ps.s.Params(), key)
 }
 
-func (ps *pageState) Key() string {
-	return "page-" + strconv.FormatUint(ps.pid, 10)
-}
-
 // RelatedKeywords implements the related.Document interface needed for fast page searches.
-func (ps *pageState) RelatedKeywords(cfg related.IndexConfig) ([]related.Keyword, error) {
+func (ps *pageState) RelatedKeywords(cfg related.IndexConfig) ([]string, error) {
 	v, found, err := page.NamedPageMetaValue(ps, cfg.Name)
-	if err != nil {
+	if err != nil || !found {
 		return nil, err
-	}
-
-	if !found {
-		return nil, nil
 	}
 
 	return cfg.ToKeywords(v)
@@ -225,10 +216,7 @@ func (ps *pageState) forEeachContentNode(f func(v sitesmatrix.Vector, n contentN
 }
 
 func (ps *pageState) contentWeight() int {
-	if ps.m.f == nil {
-		return 0
-	}
-	return ps.m.f.FileInfo().Meta().Weight
+	return ps.m.pageMetaSource.contentWeight()
 }
 
 func (ps *pageState) nodeSourceEntryID() any {
@@ -340,10 +328,8 @@ func (ps *pageState) RegularPagesRecursive() page.Pages {
 	case kinds.KindSection, kinds.KindHome:
 		return ps.s.pageMap.getPagesInSection(
 			pageMapQueryPagesInSection{
-				pageMapQueryPagesBelowPath: pageMapQueryPagesBelowPath{
-					Path:    ps.Path(),
-					Include: pagePredicates.ShouldListLocal.And(pagePredicates.KindPage).BoolFunc(),
-				},
+				Path:      ps.Path(),
+				Include:   pagePredicates.ShouldListLocal.And(pagePredicates.KindPage).BoolFunc(),
 				Recursive: true,
 			},
 		)
@@ -362,10 +348,8 @@ func (ps *pageState) RegularPages() page.Pages {
 	case kinds.KindSection, kinds.KindHome, kinds.KindTaxonomy:
 		return ps.s.pageMap.getPagesInSection(
 			pageMapQueryPagesInSection{
-				pageMapQueryPagesBelowPath: pageMapQueryPagesBelowPath{
-					Path:    ps.Path(),
-					Include: pagePredicates.ShouldListLocal.And(pagePredicates.KindPage).BoolFunc(),
-				},
+				Path:    ps.Path(),
+				Include: pagePredicates.ShouldListLocal.And(pagePredicates.KindPage).BoolFunc(),
 			},
 		)
 	case kinds.KindTerm:
@@ -387,13 +371,11 @@ func (ps *pageState) Pages() page.Pages {
 	case kinds.KindSection, kinds.KindHome:
 		return ps.s.pageMap.getPagesInSection(
 			pageMapQueryPagesInSection{
-				pageMapQueryPagesBelowPath: pageMapQueryPagesBelowPath{
-					Path:    ps.Path(),
-					KeyPart: "page-section",
-					Include: pagePredicates.ShouldListLocal.And(
-						pagePredicates.KindPage.Or(pagePredicates.KindSection),
-					).BoolFunc(),
-				},
+				Path:    ps.Path(),
+				KeyPart: "page-section",
+				Include: pagePredicates.ShouldListLocal.And(
+					pagePredicates.KindPage.Or(pagePredicates.KindSection),
+				).BoolFunc(),
 			},
 		)
 	case kinds.KindTerm:
@@ -405,11 +387,9 @@ func (ps *pageState) Pages() page.Pages {
 	case kinds.KindTaxonomy:
 		return ps.s.pageMap.getPagesInSection(
 			pageMapQueryPagesInSection{
-				pageMapQueryPagesBelowPath: pageMapQueryPagesBelowPath{
-					Path:    ps.Path(),
-					KeyPart: "term",
-					Include: pagePredicates.ShouldListLocal.And(pagePredicates.KindTerm).BoolFunc(),
-				},
+				Path:      ps.Path(),
+				KeyPart:   "term",
+				Include:   pagePredicates.ShouldListLocal.And(pagePredicates.KindTerm).BoolFunc(),
 				Recursive: true,
 			},
 		)
@@ -475,7 +455,7 @@ func (ps *pageState) String() string {
 // IsTranslated returns whether this content file is translated to
 // other language(s).
 func (ps *pageState) IsTranslated() bool {
-	return len(ps.Translations()) > 0
+	return len(ps.AllTranslations()) > 1
 }
 
 // TranslationKey returns the key used to identify a translation of this content.
@@ -628,15 +608,25 @@ func (po *pageOutput) GetInternalTemplateBasePathAndDescriptor() (string, tplimp
 }
 
 func (ps *pageState) resolveTemplate(layouts ...string) (*tplimpl.TemplInfo, bool, error) {
-	dir, d := ps.GetInternalTemplateBasePathAndDescriptor()
+	pth, d := ps.GetInternalTemplateBasePathAndDescriptor()
+	var subPath string
 
 	if len(layouts) > 0 {
-		d.LayoutFromUser = layouts[0]
+		layout := layouts[0]
+		if i := strings.LastIndexByte(layout, '/'); i != -1 {
+			// A layout in a sub path, e.g. "foo/mylayout".
+			subPath, layout = layout[:i], layout[i+1:]
+			if layout == "" {
+				return nil, false, nil
+			}
+		}
+		d.LayoutFromUser = layout
 		d.LayoutFromUserMustMatch = true
 	}
 
 	q := tplimpl.TemplateQuery{
-		Path:     dir,
+		Path:     pth,
+		SubPath:  subPath,
 		Category: tplimpl.CategoryLayout,
 		Sites:    ps.s.siteVector,
 		Desc:     d,
@@ -807,7 +797,8 @@ func (ps *pageState) getContentConverter() converter.Converter {
 		markup := ps.m.pageConfigSource.ContentMediaType.SubType
 
 		if markup == "html" {
-			// Only used for shortcode inner content.
+			// Only reachable for shortcode inner content rendering; file-based
+			// HTML pages are gated at initFrontMatter via security.allowContent.
 			markup = "markdown"
 		}
 		ps.contentConverter, err = ps.m.newContentConverter(ps, markup)

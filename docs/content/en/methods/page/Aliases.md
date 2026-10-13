@@ -19,7 +19,7 @@ By default, Hugo handles aliases by creating individual HTML files for each alia
 
 While functional, generating a single `_redirects` file allows your hosting provider to handle redirects at the server level. This is more efficient than client-side redirection and improves performance by eliminating the need to load a middle-man HTML page.
 
-> [!tip]
+> [!TIP]
 > You can use the same general approach to generate an `.htaccess` file.
 
 ## Example
@@ -30,7 +30,7 @@ The following example demonstrates how to configure your site and create a templ
 
 The content structure for this multilingual example looks like this:
 
-```text
+```tree
 content/
 ├── examples/
 │   ├── a.de.md   aliases = ['a-old']
@@ -67,16 +67,16 @@ defaultContentLanguage         = 'en'
 defaultContentLanguageInSubdir = true
 
 [languages.en]
-  languageCode      = 'en-US'
-  languageDirection = 'ltr'
-  languageName      = 'English'
+ locale      = 'en-US'
+ direction = 'ltr'
+ name      = 'English'
   weight            = 1
   title             = 'My Site in English'
 
 [languages.de]
-  languageCode      = 'de-DE'
-  languageDirection = 'ltr'
-  languageName      = 'Deutsch'
+ locale      = 'de-DE'
+ direction = 'ltr'
+ name      = 'Deutsch'
   weight            = 2
   title             = 'My Site in German'
 

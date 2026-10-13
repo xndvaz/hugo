@@ -28,7 +28,7 @@ hugo build [flags]
   -E, --buildExpired               include expired content
   -F, --buildFuture                include content with publishdate in the future
       --cacheDir string            filesystem path to cache directory
-      --cleanDestinationDir        remove files from destination not found in static directories
+      --cleanDestinationDir        remove stale files from destination
       --clock string               set the clock used by Hugo, e.g. --clock 2021-11-06T22:30:00.00+09:00
       --config string              config file (default is hugo.yaml|json|toml)
       --configDir string           config dir (default "config")
@@ -40,7 +40,7 @@ hugo build [flags]
       --forceSyncStatic            copy all files when static is changed.
       --gc                         enable to run some cleanup tasks (remove unused cache files) after the build
   -h, --help                       help for build
-      --ignoreCache                ignores the cache directory
+      --ignoreCache                ignore the configured file caches
       --ignoreVendorPaths string   ignores any _vendor for module paths matching the given Glob pattern
   -l, --layoutDir string           filesystem path to layout directory
       --logLevel string            log level (debug|info|warn|error)

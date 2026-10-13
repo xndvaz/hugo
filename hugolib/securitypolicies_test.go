@@ -30,6 +30,126 @@ import (
 func TestSecurityPolicies(t *testing.T) {
 	c := qt.New(t)
 
+	c.Run("HTML content, denied by default", func(c *qt.C) {
+		c.Parallel()
+		files := `
+-- hugo.toml --
+baseURL = "https://example.org"
+-- content/page.html --
+---
+title: "Untrusted"
+---
+<script>alert(1)</script>
+-- layouts/single.html --
+{{ .Content }}
+`
+		_, err := TestE(c, files)
+		c.Assert(err, qt.IsNotNil)
+		c.Assert(err, qt.ErrorMatches, `(?s).*"text/html" is not whitelisted in policy "security\.allowContent".*`)
+	})
+
+	c.Run("HTML content, allowed via override", func(c *qt.C) {
+		c.Parallel()
+		files := `
+-- hugo.toml --
+baseURL = "https://example.org"
+[security]
+allowContent = ['.*']
+-- content/page.html --
+---
+title: "Trusted"
+---
+<p>hello</p>
+-- layouts/single.html --
+{{ .Content }}
+`
+		b := Test(c, files)
+		b.AssertFileContent("public/page/index.html", "<p>hello</p>")
+	})
+
+	c.Run("HTML content from content adapter, denied by default", func(c *qt.C) {
+		c.Parallel()
+		files := `
+-- hugo.toml --
+baseURL = "https://example.org"
+-- content/_content.gotmpl --
+{{ .AddPage (dict "path" "p1" "title" "Untrusted" "content" (dict "value" "<script>alert(1)</script>" "mediaType" "text/html")) }}
+-- layouts/single.html --
+{{ .Content }}
+`
+		_, err := TestE(c, files)
+		c.Assert(err, qt.IsNotNil)
+		c.Assert(err, qt.ErrorMatches, `(?s).*"text/html" is not whitelisted in policy "security\.allowContent".*`)
+	})
+
+	c.Run("HTML content from content adapter, allowed via override", func(c *qt.C) {
+		c.Parallel()
+		files := `
+-- hugo.toml --
+baseURL = "https://example.org"
+[security]
+allowContent = ['.*']
+-- content/_content.gotmpl --
+{{ .AddPage (dict "path" "p1" "title" "Trusted" "content" (dict "value" "<p>hello</p>" "mediaType" "text/html")) }}
+-- layouts/single.html --
+{{ .Content }}
+`
+		b := Test(c, files)
+		b.AssertFileContent("public/p1/index.html", "<p>hello</p>")
+	})
+
+	c.Run("Org content, denied by default", func(c *qt.C) {
+		c.Parallel()
+		files := `
+-- hugo.toml --
+baseURL = "https://example.org"
+-- content/page.org --
+---
+title: "Untrusted"
+---
+@@html:<script>alert(1)</script>@@
+-- layouts/single.html --
+{{ .Content }}
+`
+		_, err := TestE(c, files)
+		c.Assert(err, qt.IsNotNil)
+		c.Assert(err, qt.ErrorMatches, `(?s).*"text/org" is not whitelisted in policy "security\.allowContent".*`)
+	})
+
+	c.Run("Org content, allowed via override", func(c *qt.C) {
+		c.Parallel()
+		files := `
+-- hugo.toml --
+baseURL = "https://example.org"
+[security]
+allowContent = ['.*']
+-- content/page.org --
+---
+title: "Trusted"
+---
+hello
+-- layouts/single.html --
+{{ .Content }}
+`
+		b := Test(c, files)
+		b.AssertFileContent("public/page/index.html", "hello")
+	})
+
+	c.Run("Org content from content adapter, denied by default", func(c *qt.C) {
+		c.Parallel()
+		files := `
+-- hugo.toml --
+baseURL = "https://example.org"
+-- content/_content.gotmpl --
+{{ .AddPage (dict "path" "p1" "title" "Untrusted" "content" (dict "value" "@@html:<script>alert(1)</script>@@" "mediaType" "text/org")) }}
+-- layouts/single.html --
+{{ .Content }}
+`
+		_, err := TestE(c, files)
+		c.Assert(err, qt.IsNotNil)
+		c.Assert(err, qt.ErrorMatches, `(?s).*"text/org" is not whitelisted in policy "security\.allowContent".*`)
+	})
+
 	c.Run("os.GetEnv, denied", func(c *qt.C) {
 		c.Parallel()
 		files := `
@@ -151,6 +271,9 @@ allow="none"
 		files := fmt.Sprintf(`
 -- hugo.toml --
 baseURL = "https://example.org"
+[security]
+[security.http]
+urls = ['.*']
 -- layouts/home.html --
 {{ $json := resources.GetRemote "%s/fruits.json" }}{{ $json.Content }}
 `, ts.URL)
@@ -166,6 +289,9 @@ baseURL = "https://example.org"
 		files := fmt.Sprintf(`
 -- hugo.toml --
 baseURL = "https://example.org"
+[security]
+[security.http]
+urls = ['.*']
 -- layouts/home.html --
 {{ $json := resources.GetRemote "%s/fruits.json" (dict "method" "DELETE" ) }}{{ $json.Content }}
 `, ts.URL)
@@ -194,6 +320,23 @@ urls="none"
 		c.Assert(err, qt.ErrorMatches, `(?s).*is not whitelisted in policy "security\.http\.urls".*`)
 	})
 
+	c.Run("resources.GetRemote, denied loopback URL by default", func(c *qt.C) {
+		c.Parallel()
+		ts := httptest.NewServer(http.FileServer(http.Dir("testdata/")))
+		c.Cleanup(func() {
+			ts.Close()
+		})
+		files := fmt.Sprintf(`
+-- hugo.toml --
+baseURL = "https://example.org"
+-- layouts/home.html --
+{{ $json := resources.GetRemote "%s/fruits.json" }}{{ $json.Content }}
+`, ts.URL)
+		_, err := TestE(c, files)
+		c.Assert(err, qt.IsNotNil)
+		c.Assert(err, qt.ErrorMatches, `(?s).*is not whitelisted in policy "security\.http\.urls".*`)
+	})
+
 	c.Run("resources.GetRemote, fake JSON", func(c *qt.C) {
 		c.Parallel()
 		ts := httptest.NewServer(http.FileServer(http.Dir("testdata/")))
@@ -204,6 +347,8 @@ urls="none"
 -- hugo.toml --
 baseURL = "https://example.org"
 [security]
+[security.http]
+urls = ['.*']
 -- layouts/home.html --
 {{ $json := resources.GetRemote "%s/fakejson.json" }}{{ $json.Content }}
 `, ts.URL)
@@ -223,6 +368,7 @@ baseURL = "https://example.org"
 baseURL = "https://example.org"
 [security]
 [security.http]
+urls = ['.*']
 mediaTypes=["application/json"]
 -- layouts/home.html --
 {{ $json := resources.GetRemote "%s/fakejson.json" }}{{ $json.Content }}

@@ -7,13 +7,9 @@ params:
   functions_and_methods:
     returnType: template.HTML
     signatures: [PAGE.TableOfContents]
-aliases: [/content-management/toc/]
 ---
 
-The `TableOfContents` method on a `Page` object returns an ordered or unordered list of the Markdown [ATX] and [setext] headings within the page content.
-
-[atx]: https://spec.commonmark.org/current/#atx-headings
-[setext]: https://spec.commonmark.org/current/#setext-headings
+The `TableOfContents` method on a `Page` object returns an ordered or unordered list of the Markdown [ATX][] and [setext][] headings within the page content.
 
 This template code:
 
@@ -45,3 +41,6 @@ endLevel = 3
 ordered = false
 startLevel = 2
 {{< /code-toggle >}}
+
+[ATX]: https://spec.commonmark.org/current/#atx-headings
+[setext]: https://spec.commonmark.org/current/#setext-headings

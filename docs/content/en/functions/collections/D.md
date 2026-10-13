@@ -47,7 +47,7 @@ The example above generates the _same_ random numbers each time it is called. To
 When `N` is greater than `HIGH`, this function returns the full, sorted range [0, `HIGH`) of size `HIGH`:
 
 ```go-html-template
-{{ collections.D 6 42 7 }} → [0 1 2 3 4 5 6] 
+{{ collections.D 6 42 7 }} → [0 1 2 3 4 5 6]
 ```
 
 A common use case is the selection of random pages from a page collection. For example, to render a list of 5 random pages using the [day of the year][] as the seed value:
@@ -77,6 +77,6 @@ Same result per day|`time.Now.YearDay`
 Same result per page|`hash.FNV32a .Path`
 Different result per page per day|`hash.FNV32a (print .Path time.Now.YearDay)`
 
+[Method D]: https://getkerf.wordpress.com/2016/03/30/the-best-algorithm-no-one-knows-about/
 [`collections.Shuffle`]: /functions/collections/shuffle/
 [day of the year]: /methods/time/yearday/
-[Method D]: https://getkerf.wordpress.com/2016/03/30/the-best-algorithm-no-one-knows-about/

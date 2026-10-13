@@ -117,8 +117,8 @@ func (lcp *LazyContentProvider) Len(ctx context.Context) int {
 	return lcp.init.Value(ctx).Len(ctx)
 }
 
-func (lcp *LazyContentProvider) Render(ctx context.Context, layout ...string) (template.HTML, error) {
-	return lcp.init.Value(ctx).Render(ctx, layout...)
+func (lcp *LazyContentProvider) Render(ctx context.Context, args ...any) (template.HTML, error) {
+	return lcp.init.Value(ctx).Render(ctx, args...)
 }
 
 func (lcp *LazyContentProvider) RenderString(ctx context.Context, args ...any) (template.HTML, error) {
@@ -133,6 +133,6 @@ func (lcp *LazyContentProvider) ParseContent(ctx context.Context, content []byte
 	return lcp.init.Value(ctx).ParseContent(ctx, content)
 }
 
-func (lcp *LazyContentProvider) RenderContent(ctx context.Context, content []byte, doc any) (converter.ResultRender, bool, error) {
-	return lcp.init.Value(ctx).RenderContent(ctx, content, doc)
+func (lcp *LazyContentProvider) RenderContent(ctx context.Context, content []byte, sourceInfo, doc any) (converter.ResultRender, bool, error) {
+	return lcp.init.Value(ctx).RenderContent(ctx, content, sourceInfo, doc)
 }

@@ -1,11 +1,14 @@
 ---
 title: Image processing
-description: Process, transform, and analyze images.
+description: Transform images to change their size, shape, and appearance.
 categories: []
 keywords: []
 ---
 
-Hugo provides methods to transform and analyze images during the build process. The results are cached to ensure subsequent builds remain fast.
+Hugo provides methods to transform and analyze images during the build process. While Hugo can manage any image format as a resource, only [processable images](g) can be transformed using the methods below. The results are cached to ensure subsequent builds remain fast.
+
+> [!NOTE]
+> Use the [`reflect.IsImageResourceProcessable`][] function to verify that an image can be processed.
 
 ## Resources
 
@@ -15,7 +18,7 @@ To process an image you must capture the file as a page resource, a global resou
 
 {{% glossary-term "page resource" %}}
 
-```text
+```tree
 content/
 └── posts/
     └── post-1/           <-- page bundle
@@ -33,7 +36,7 @@ To capture an image as a page resource:
 
 {{% glossary-term "global resource" %}}
 
-```text
+```tree
 assets/
 └── images/
     └── sunset.jpg    <-- global resource
@@ -98,6 +101,8 @@ Example 4: Skip rendering if there's problem accessing a remote resource.
 {{ end }}
 ```
 
+{{% include "/_common/functions/reflect/image-reflection-functions.md" %}}
+
 ## Processing
 
 To transform an image, apply a processing method to the image resource. Hugo generates the processed image on demand, caches the result, and returns a new resource object.
@@ -110,33 +115,28 @@ To transform an image, apply a processing method to the image resource. Hugo gen
 {{ end }}
 ```
 
-> [!note]
-> Metadata is not preserved during image transformation. Use the `Exif` or `Meta` methods with the _original_ image resource to extract metadata from JPEG, PNG, TIFF, and WebP images.
+> [!NOTE]
+> Metadata is not preserved during image transformation. Use the [`Meta`][] method with the original image resource to extract metadata from supported formats.
 
-Each method serves a specific transformation or metadata requirement:
+Select a method from the table below for syntax and usage examples, depending on your specific transformation or metadata requirements:
 
-Method|Description
-:--|:--
-[`Colors`]|Returns a slice of the most dominant colors using a simple histogram method.
-[`Crop`]|Returns a new image resource cropped according to the given processing specification.
-[`Exif`]|Applicable to JPEG, PNG, TIFF, and WebP images, returns an object containing Exif metadata.
-[`Fill`]|Returns a new image resource cropped and resized according to the given processing specification.
-[`Filter`]|Applies one or more image filters to the given image resource.
-[`Fit`]|Returns a new image resource downscaled to fit according to the given processing specification.
-[`Meta`]|Applicable to JPEG, PNG, TIFF, and WebP images, returns an object containing Exif, IPTC, and XMP metadata.
-[`Process`]|Returns a new image resource processed according to the given processing specification.
-[`Resize`]|Returns a new image resource resized according to the given processing specification.
-{class="!mt-0"}
-
-Select a method from the table above for syntax and usage examples.
+{{% render-table-of-pages-in-section
+  path=/methods/resource
+  filter=methods_resource_image_processing
+  filterType=include
+  headingColumn1=Method
+  headingColumn2=Description
+%}}{class="!mt-0"}
 
 ## Performance
+
+Consider these factors when processing a large number of images.
 
 ### Caching
 
 Hugo processes images on demand and returns a new resource object. To ensure subsequent builds remain fast, Hugo caches the results in the directory specified in the [file cache][] section of your project configuration.
 
-If you host your site with Netlify, include the following in your project configuration to persist the image cache between builds:
+If you deploy your site to a [CI/CD](g) platform, follow the platform-specific instructions in the [hosting guides][] to persist the image cache between builds. These instructions include setting the location of the image cache in your project configuration:
 
 ```toml
 [caches]
@@ -148,7 +148,7 @@ If you host your site with Netlify, include the following in your project config
 
 If you change image processing methods, or rename/remove images, the cache will eventually contain unused files. To remove them and reclaim disk space, run Hugo's garbage collection:
 
-```text
+```sh
 hugo build --gc
 ```
 
@@ -160,19 +160,14 @@ If your source images are much larger than the maximum size you intend to publis
 
 ## Configuration
 
-See [configure imaging](/configuration/imaging).
+See [configure imaging][].
 
-[`Colors`]: /methods/resource/colors/
-[`Crop`]: /methods/resource/crop/
-[`Exif`]: /methods/resource/exif/
-[`Fill`]: /methods/resource/fill/
-[`Filter`]: /methods/resource/filter/
-[`Fit`]: /methods/resource/fit/
 [`Height`]: /methods/resource/height/
 [`Meta`]: /methods/resource/meta/
 [`Permalink`]: /methods/resource/permalink/
-[`Process`]: /methods/resource/process/
 [`RelPermalink`]: /methods/resource/relpermalink/
-[`Resize`]: /methods/resource/resize/
 [`Width`]: /methods/resource/width/
+[`reflect.IsImageResourceProcessable`]: /functions/reflect/isimageresourceprocessable/
+[configure imaging]: /configuration/imaging/
 [file cache]: /configuration/caches/
+[hosting guides]: /host-and-deploy/deployment-methods/#push-to-a-git-repository

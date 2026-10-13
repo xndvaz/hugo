@@ -16,6 +16,7 @@ package esbuild
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/gohugoio/hugo/common/hugio"
 	"github.com/gohugoio/hugo/common/paths"
 	"github.com/gohugoio/hugo/identity"
+	"github.com/gohugoio/hugo/resources/resource_transformers/tocss/sass"
 
 	"github.com/evanw/esbuild/pkg/api"
 
@@ -47,6 +49,7 @@ var (
 		"es2022": api.ES2022,
 		"es2023": api.ES2023,
 		"es2024": api.ES2024,
+		"es2025": api.ES2025,
 	}
 
 	engineName = map[string]api.EngineName{
@@ -157,6 +160,11 @@ type ExternalOptions struct {
 	// See https://esbuild.github.io/api/#platform
 	Platform string
 
+	// One of ascii, utf8.
+	// Default is ascii, which escapes non-ASCII characters.
+	// See https://esbuild.github.io/api/#charset
+	Charset string
+
 	// When you import a package in node, the main field in that package's package.json file
 	// determines which file is imported (along with a lot of other rules).
 	// The default main fields is controlled by ESBuild and depend on the current platform setting.
@@ -180,6 +188,9 @@ type ExternalOptions struct {
 
 	// Maps a component import to another.
 	Shims map[string]string
+
+	// User provided import context. If set, we will look here first.
+	ImportContext any
 
 	// Configuring a loader for a given file type lets you load that file type with an
 	// import statement or a require call. For example, configuring the .png file extension
@@ -207,6 +218,9 @@ type ExternalOptions struct {
 	// See https://esbuild.github.io/api/#jsx-import-source
 	JSXImportSource string
 
+	// User defined CSS variables. Will be available as CSS global scope CSS variables via @import "hugo:vars".
+	Vars map[string]any
+
 	// There is/was a bug in WebKit with severe performance issue with the tracking
 	// of TDZ checks in JavaScriptCore.
 	//
@@ -230,6 +244,10 @@ type InternalOptions struct {
 	AbsWorkingDir string
 	Metafile      bool
 
+	// Used as a prefix for asset references that go through the file loader.
+	// See https://esbuild.github.io/api/#public-path
+	PublicPath string
+
 	StdinSourcePath string
 
 	DependencyManager identity.Manager
@@ -240,7 +258,7 @@ type InternalOptions struct {
 	TsConfig                string
 	EntryPoints             []string
 	ImportOnResolveFunc     func(string, api.OnResolveArgs) string
-	ImportOnLoadFunc        func(api.OnLoadArgs) string
+	ImportOnLoadFunc        func(api.OnLoadArgs) (string, error)
 	ImportParamsOnLoadFunc  func(args api.OnLoadArgs) json.RawMessage
 	ErrorMessageResolveFunc func(api.Message) *ErrorMessageResolved
 	ResolveSourceMapSource  func(string) string // Used to resolve paths in error source maps.
@@ -293,9 +311,7 @@ OUTER:
 		loaders = make(map[string]api.Loader)
 		// Add default CSS file loaders.
 		// May be overridden by opts.Loaders.
-		for ext, loader := range extensionToLoaderMapCSS {
-			loaders[ext] = loader
-		}
+		maps.Copy(loaders, extensionToLoaderMapCSS)
 	}
 	if opts.Loaders != nil {
 		if loaders == nil {
@@ -374,6 +390,17 @@ OUTER:
 		return
 	}
 
+	var charset api.Charset
+	switch opts.Charset {
+	case "", "ascii":
+		charset = api.CharsetASCII
+	case "utf8":
+		charset = api.CharsetUTF8
+	default:
+		err = fmt.Errorf("unsupported charset: %q", opts.Charset)
+		return
+	}
+
 	var defines map[string]string
 	if opts.Defines != nil {
 		defines = hmaps.ToStringMapString(opts.Defines)
@@ -417,6 +444,8 @@ OUTER:
 		opts.MainFields = []string{"style", "main"}
 	}
 
+	opts.Vars = sass.PrepareVars(opts.Vars)
+
 	opts.compiled = api.BuildOptions{
 		Outfile:       outFile,
 		Bundle:        true,
@@ -428,6 +457,7 @@ OUTER:
 		Format:         format,
 		MainFields:     opts.MainFields,
 		Platform:       platform,
+		Charset:        charset,
 		Sourcemap:      sourceMap,
 		SourcesContent: sourcesContent,
 
@@ -437,8 +467,9 @@ OUTER:
 		MinifyIdentifiers: opts.Minify,
 		MinifySyntax:      opts.Minify,
 
-		Outdir:    outDir,
-		Splitting: opts.Splitting,
+		Outdir:     outDir,
+		PublicPath: opts.PublicPath,
+		Splitting:  opts.Splitting,
 
 		Define:   defines,
 		External: opts.Externals,

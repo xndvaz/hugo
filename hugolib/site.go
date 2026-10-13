@@ -197,6 +197,10 @@ func (s *Site) Debug() {
 
 // NewHugoSites creates HugoSites from the given config.
 func NewHugoSites(cfg deps.DepsCfg) (*HugoSites, error) {
+	if !cfg.TestCfg.IsZero() && !cfg.IsIntegrationTest {
+		panic("DepsCfg.TestCfg must only be set in integration tests")
+	}
+
 	conf := cfg.Configs.GetFirstLanguageConfig()
 	rolesSorted := cfg.Configs.Base.Roles.Config.Sorted
 	versionsSorted := cfg.Configs.Base.Versions.Config.Sorted
@@ -204,10 +208,12 @@ func NewHugoSites(cfg deps.DepsCfg) (*HugoSites, error) {
 	var (
 		poolSizeKatex = 2
 		poolSizeWebP  = 1
+		poolSizeAvif  = 1
 	)
 	if n := config.GetNumWorkerMultiplier(); n > 1 {
 		poolSizeKatex = min(n, 8)
 		poolSizeWebP = max(2, n/2)
+		poolSizeAvif = max(2, n/2)
 	}
 
 	var logger loggers.Logger
@@ -255,6 +261,11 @@ func NewHugoSites(cfg deps.DepsCfg) (*HugoSites, error) {
 
 	compilationCacheDir := filepath.Join(conf.Dirs().CacheDir, "_warpc")
 
+	imageWasmMemory := 384 // 384 MiB (4096 MiB Max)
+	if m := cfg.TestCfg.WarpcMemory; m > 0 {
+		imageWasmMemory = m
+	}
+
 	firstSiteDeps := &deps.Deps{
 		Fs:   cfg.Fs,
 		Log:  logger,
@@ -278,9 +289,17 @@ func NewHugoSites(cfg deps.DepsCfg) (*HugoSites, error) {
 			warpc.Options{
 				CompilationCacheDir: compilationCacheDir,
 				PoolSize:            poolSizeWebP,
-				Memory:              384, // 384 MiB (4096 MiB Max)
+				Memory:              imageWasmMemory,
 				Infof:               logger.InfoCommand("webp").Logf,
 				Warnf:               logger.WarnCommand("webp").Logf,
+			},
+			// Avif options.
+			warpc.Options{
+				CompilationCacheDir: compilationCacheDir,
+				PoolSize:            poolSizeAvif,
+				Memory:              imageWasmMemory,
+				Infof:               logger.InfoCommand("avif").Logf,
+				Warnf:               logger.WarnCommand("avif").Logf,
 			},
 		),
 	}
@@ -532,6 +551,10 @@ func newHugoSites(
 		opts.GoVersion = bi.GoVersion
 	}
 
+	if opts.BuildDate == "" {
+		opts.BuildDate = hugo.GetBuildDate()
+	}
+
 	h.hugoInfo = page.NewHugoInfo(opts)
 
 	var prototype *deps.Deps
@@ -736,11 +759,9 @@ func (s *Site) Pages() page.Pages {
 	s.CheckReady()
 	return s.pageMap.getPagesInSection(
 		pageMapQueryPagesInSection{
-			pageMapQueryPagesBelowPath: pageMapQueryPagesBelowPath{
-				Path:    "",
-				KeyPart: "global",
-				Include: pagePredicates.ShouldListGlobal.BoolFunc(),
-			},
+			Path:        "",
+			KeyPart:     "global",
+			Include:     pagePredicates.ShouldListGlobal.BoolFunc(),
 			Recursive:   true,
 			IncludeSelf: true,
 		},
@@ -753,11 +774,9 @@ func (s *Site) RegularPages() page.Pages {
 	s.CheckReady()
 	return s.pageMap.getPagesInSection(
 		pageMapQueryPagesInSection{
-			pageMapQueryPagesBelowPath: pageMapQueryPagesBelowPath{
-				Path:    "",
-				KeyPart: "global",
-				Include: pagePredicates.ShouldListGlobal.And(pagePredicates.KindPage).BoolFunc(),
-			},
+			Path:      "",
+			KeyPart:   "global",
+			Include:   pagePredicates.ShouldListGlobal.And(pagePredicates.KindPage).BoolFunc(),
 			Recursive: true,
 		},
 	)
@@ -899,11 +918,9 @@ func (s *Site) prepareInits() {
 
 		sections := s.pageMap.getPagesInSection(
 			pageMapQueryPagesInSection{
-				pageMapQueryPagesBelowPath: pageMapQueryPagesBelowPath{
-					Path:    "",
-					KeyPart: "sectionorhome",
-					Include: pagePredicates.KindSection.Or(pagePredicates.KindHome).BoolFunc(),
-				},
+				Path:        "",
+				KeyPart:     "sectionorhome",
+				Include:     pagePredicates.KindSection.Or(pagePredicates.KindHome).BoolFunc(),
 				IncludeSelf: true,
 				Recursive:   true,
 			},
@@ -1234,20 +1251,14 @@ func (h *HugoSites) fileEventsApplyInfo(events []fsnotify.Event) []fileEventInfo
 		removed := false
 		added := false
 
-		if ev.Op&fsnotify.Remove == fsnotify.Remove {
-			removed = true
-		}
-
 		fi, statErr := h.Fs.Source.Stat(ev.Name)
 
-		// Some editors (Vim) sometimes issue only a Rename operation when writing an existing file
-		// Sometimes a rename operation means that file has been renamed other times it means
-		// it's been updated.
-		if ev.Op.Has(fsnotify.Rename) {
-			// If the file is still on disk, it's only been updated, if it's not, it's been moved
-			if statErr != nil {
-				removed = true
-			}
+		// Some editors (Vim) sometimes issue only a Rename operation when writing an existing file,
+		// and an atomic save (write temp file, then rename it into place) makes the watcher
+		// report the replaced file as removed (kqueue/macOS).
+		// So, if the file is still on disk, it's only been updated, if it's not, it's gone.
+		if ev.Op.Has(fsnotify.Remove) || ev.Op.Has(fsnotify.Rename) {
+			removed = statErr != nil
 		}
 		if ev.Op.Has(fsnotify.Create) {
 			added = true
@@ -1447,12 +1458,10 @@ func (s *Site) assembleMenus() (navigation.Menus, error) {
 				return false, nil
 			}
 			me := navigation.MenuEntry{
-				MenuConfig: navigation.MenuConfig{
-					Identifier: id,
-					Name:       p.LinkTitle(),
-					Weight:     p.Weight(),
-				},
-				Page: p,
+				Identifier: id,
+				Name:       p.LinkTitle(),
+				Weight:     p.Weight(),
+				Page:       p,
 			}
 
 			navigation.SetPageValues(&me, p)
@@ -1491,9 +1500,7 @@ func (s *Site) assembleMenus() (navigation.Menus, error) {
 		if !ok {
 			// if parent does not exist, create one without a URL
 			flat[twoD{p.MenuName, p.EntryName}] = &navigation.MenuEntry{
-				MenuConfig: navigation.MenuConfig{
-					Name: p.EntryName,
-				},
+				Name: p.EntryName,
 			}
 		}
 		flat[twoD{p.MenuName, p.EntryName}].Children = childmenu
@@ -1682,7 +1689,7 @@ var infoOnMissingLayout = map[string]bool{
 type hookRendererTemplate struct {
 	templateHandler *tplimpl.TemplateStore
 	templ           *tplimpl.TemplInfo
-	resolvePosition func(ctx any) text.Position
+	resolvePosition func(renderContext any, pos int) text.Position
 }
 
 func (hr hookRendererTemplate) RenderLink(cctx context.Context, w io.Writer, ctx hooks.LinkContext) error {
@@ -1709,8 +1716,8 @@ func (hr hookRendererTemplate) RenderTable(cctx context.Context, w hugio.FlexiWr
 	return hr.templateHandler.ExecuteWithContext(cctx, hr.templ, w, ctx)
 }
 
-func (hr hookRendererTemplate) ResolvePosition(ctx any) text.Position {
-	return hr.resolvePosition(ctx)
+func (hr hookRendererTemplate) ResolvePosition(renderContext any, pos int) text.Position {
+	return hr.resolvePosition(renderContext, pos)
 }
 
 func (hr hookRendererTemplate) IsDefaultCodeBlockRenderer() bool {

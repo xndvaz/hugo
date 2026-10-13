@@ -227,6 +227,10 @@ func (p *nopPage) IsNode() bool {
 	return false
 }
 
+func (p *nopPage) IsBranch() bool {
+	return false
+}
+
 func (p *nopPage) IsPage() bool {
 	return false
 }
@@ -395,7 +399,7 @@ func (p *nopPage) RelRef(argsm map[string]any) (string, error) {
 	return "", nil
 }
 
-func (p *nopPage) Render(ctx context.Context, layout ...string) (template.HTML, error) {
+func (p *nopPage) Render(ctx context.Context, args ...any) (template.HTML, error) {
 	return "", nil
 }
 
@@ -419,7 +423,7 @@ func (p *nopPage) Store() *hstore.Scratch {
 	return nil
 }
 
-func (p *nopPage) RelatedKeywords(cfg related.IndexConfig) ([]related.Keyword, error) {
+func (p *nopPage) RelatedKeywords(cfg related.IndexConfig) ([]string, error) {
 	return nil, nil
 }
 
@@ -522,7 +526,7 @@ func (r *nopContentRenderer) ParseContent(ctx context.Context, content []byte) (
 	return nil, false, nil
 }
 
-func (r *nopContentRenderer) RenderContent(ctx context.Context, content []byte, doc any) (converter.ResultRender, bool, error) {
+func (r *nopContentRenderer) RenderContent(ctx context.Context, content []byte, sourceInfo, doc any) (converter.ResultRender, bool, error) {
 	return nil, false, nil
 }
 

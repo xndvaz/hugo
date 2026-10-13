@@ -8,7 +8,6 @@ params:
     aliases: [dict]
     returnType: map[string]any
     signatures: ['collections.Dictionary [VALUE...]']
-aliases: [/functions/dict]
 ---
 
 Specify the key-value pairs as individual arguments:
@@ -24,12 +23,6 @@ The above produces this data structure:
   "a": 1,
   "b": 2
 }
-```
-
-To create an empty map:
-
-```go-html-template
-{{ $m := dict }}
 ```
 
 Note that the `key` can be either a `string` or a `[]string`. The latter is useful to create a deeply nested structure, e.g.:
@@ -48,4 +41,10 @@ The above produces this data structure:
     }
   }
 }
+```
+
+To create an empty map:
+
+```go-html-template
+{{ $m := dict }}
 ```

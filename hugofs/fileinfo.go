@@ -35,6 +35,7 @@ import (
 	"github.com/gohugoio/hugo/common/herrors"
 	"github.com/gohugoio/hugo/common/hreflect"
 	"github.com/gohugoio/hugo/common/htime"
+	"github.com/gohugoio/hugo/common/hugio"
 	"github.com/gohugoio/hugo/common/paths"
 
 	"github.com/spf13/afero"
@@ -139,7 +140,7 @@ func (f *FileMeta) ReadAll() ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return io.ReadAll(file)
+	return hugio.ReadAll(file)
 }
 
 func (f *FileMeta) JoinStat(name string) (FileMetaInfo, error) {
@@ -154,6 +155,30 @@ func (m *FileMeta) ModulePath() string {
 		return ""
 	}
 	return m.Module.Path()
+}
+
+func (m *FileMeta) MatchSiteVectorCoarse(v sitesmatrix.Vector) bool {
+	language := v.Language()
+	if !(m.SitesMatrix.HasLanguage(language) || m.SitesComplements.HasLanguage(language)) {
+		return false
+	}
+
+	return m.MatchSiteVectorCoarseExcludeLanguage(v)
+}
+
+func (m *FileMeta) MatchSiteVectorCoarseExcludeLanguage(v sitesmatrix.Vector) bool {
+	version := v.Version()
+	if !(m.SitesMatrix.HasVersion(version) || m.SitesComplements.HasVersion(version)) {
+		return false
+	}
+
+	role := v.Role()
+	// lint:ignore S1008 preserve the symmetry from above.
+	if !(m.SitesMatrix.HasRole(role) || m.SitesComplements.HasRole(role)) {
+		return false
+	}
+
+	return true
 }
 
 type FileMetaInfo interface {

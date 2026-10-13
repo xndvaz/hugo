@@ -21,12 +21,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2"
-	"github.com/alecthomas/chroma/v2/formatters/html"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/bep/simplecobra"
 	"github.com/goccy/go-yaml"
 	"github.com/gohugoio/hugo/common/hugo"
@@ -34,6 +30,7 @@ import (
 	"github.com/gohugoio/hugo/helpers"
 	"github.com/gohugoio/hugo/hugofs"
 	"github.com/gohugoio/hugo/hugolib"
+	"github.com/gohugoio/hugo/markup/highlight"
 	"github.com/gohugoio/hugo/parser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -47,6 +44,10 @@ func newGenCommand() *genCommand {
 
 		// Chroma flags.
 		style                  string
+		mode                   string
+		modeSelector           bool
+		classDark              string
+		classLight             string
 		highlightStyle         string
 		lineNumbersInlineStyle string
 		lineNumbersTableStyle  string
@@ -63,43 +64,41 @@ func newGenCommand() *genCommand {
 See https://gohugo.io/quick-reference/syntax-highlighting-styles/ for a preview of the available styles.`,
 
 			run: func(ctx context.Context, cd *simplecobra.Commandeer, r *rootCommand, args []string) error {
-				style = strings.ToLower(style)
-				if !slices.Contains(styles.Names(), style) {
-					return fmt.Errorf("invalid style: %s", style)
-				}
-				builder := styles.Get(style).Builder()
-				if highlightStyle != "" {
-					builder.Add(chroma.LineHighlight, highlightStyle)
-				}
-				if lineNumbersInlineStyle != "" {
-					builder.Add(chroma.LineNumbers, lineNumbersInlineStyle)
-				}
-				if lineNumbersTableStyle != "" {
-					builder.Add(chroma.LineNumbersTable, lineNumbersTableStyle)
-				}
-				style, err := builder.Build()
-				if err != nil {
-					return err
-				}
-
 				if omitEmpty {
 					// See https://github.com/alecthomas/chroma/commit/5b2a4c5a26c503c79bc86ba3c4ae5b330028bd3d
 					hugo.Deprecate("--omitEmpty", "Flag is no longer needed, empty classes are now always omitted.", "v0.149.0")
 				}
-				options := []html.Option{
-					html.WithCSSComments(!omitClassComments),
+				css, err := highlight.ChromaStylesCSS(highlight.ChromaStylesOptions{
+					Style:                  style,
+					Mode:                   mode,
+					ModeSelector:           modeSelector,
+					ClassDark:              classDark,
+					ClassLight:             classLight,
+					HighlightStyle:         highlightStyle,
+					LineNumbersInlineStyle: lineNumbersInlineStyle,
+					LineNumbersTableStyle:  lineNumbersTableStyle,
+					OmitClassComments:      omitClassComments,
+				})
+				if err != nil {
+					return err
 				}
-				formatter := html.New(options...)
 
-				w := os.Stdout
-				fmt.Fprintf(w, "/* Generated using: hugo %s */\n\n", strings.Join(os.Args[1:], " "))
-				formatter.WriteCSS(w, style)
+				fmt.Printf("/* Generated using: hugo %s */\n\n", strings.Join(os.Args[1:], " "))
+				fmt.Print(css)
 				return nil
 			},
 			withc: func(cmd *cobra.Command, r *rootCommand) {
 				cmd.ValidArgsFunction = cobra.NoFileCompletions
 				cmd.PersistentFlags().StringVar(&style, "style", "friendly", "highlighter style")
 				_ = cmd.RegisterFlagCompletionFunc("style", cobra.NoFileCompletions)
+				cmd.PersistentFlags().StringVar(&mode, "mode", "", `style mode ("light", "dark")`)
+				_ = cmd.RegisterFlagCompletionFunc("mode", cobra.FixedCompletions([]string{"light", "dark"}, cobra.ShellCompDirectiveNoFileComp))
+				cmd.PersistentFlags().BoolVar(&modeSelector, "modeSelector", false, `scope selectors under a top level mode class, e.g. ".dark .chroma"`)
+				_ = cmd.RegisterFlagCompletionFunc("modeSelector", cobra.NoFileCompletions)
+				cmd.PersistentFlags().StringVar(&classDark, "classDark", "dark", `class name used by --modeSelector for dark styles`)
+				_ = cmd.RegisterFlagCompletionFunc("classDark", cobra.NoFileCompletions)
+				cmd.PersistentFlags().StringVar(&classLight, "classLight", "light", `class name used by --modeSelector for light styles`)
+				_ = cmd.RegisterFlagCompletionFunc("classLight", cobra.NoFileCompletions)
 				cmd.PersistentFlags().StringVar(&highlightStyle, "highlightStyle", "", `foreground and background colors for highlighted lines, e.g. --highlightStyle "#fff000 bg:#000fff"`)
 				_ = cmd.RegisterFlagCompletionFunc("highlightStyle", cobra.NoFileCompletions)
 				cmd.PersistentFlags().StringVar(&lineNumbersInlineStyle, "lineNumbersInlineStyle", "", `foreground and background colors for inline line numbers, e.g. --lineNumbersInlineStyle "#fff000 bg:#000fff"`)

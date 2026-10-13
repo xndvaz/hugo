@@ -33,6 +33,7 @@ import (
 	"github.com/gohugoio/hugo/common/loggers"
 	"github.com/gohugoio/hugo/common/version"
 	"github.com/gohugoio/hugo/hugofs/files"
+	"github.com/gohugoio/hugo/internal/warpc"
 
 	"github.com/spf13/afero"
 
@@ -59,6 +60,11 @@ type BuildInfo struct {
 	Revision     string
 	RevisionTime string
 	GoVersion    string
+}
+
+// GetBuildDate returns the build date if set by -ldflags="-X github.com/gohugoio/hugo/common/hugo.buildDate="
+func GetBuildDate() string {
+	return buildDate
 }
 
 // GetBuildInfo returns the build info for the current binary.
@@ -105,7 +111,7 @@ func GetExecEnviron(workDir string, cfg config.AllProvider, fs afero.Fs) []strin
 	var env []string
 	nodepath := filepath.Join(workDir, "node_modules")
 	if np := os.Getenv("NODE_PATH"); np != "" {
-		nodepath = workDir + string(os.PathListSeparator) + np
+		nodepath = nodepath + string(os.PathListSeparator) + np
 	}
 	config.SetEnvVars(&env, "NODE_PATH", nodepath)
 	config.SetEnvVars(&env, "PWD", workDir)
@@ -206,7 +212,10 @@ func GetDependencyList() []string {
 
 // GetDependencyListNonGo returns a list of non-Go dependencies.
 func GetDependencyListNonGo() []string {
-	deps := []string{formatDep("github.com/webmproject/libwebp", "v1.6.0")} // via WASM. TODO(bep) get versions from the plugin setup.
+	var deps []string
+	for _, dep := range warpc.GetWASMDeps() {
+		deps = append(deps, formatDep(dep[0], dep[1]))
+	}
 
 	if IsExtended {
 		deps = append(
@@ -220,7 +229,8 @@ func GetDependencyListNonGo() []string {
 		if IsDartSassGeV2() {
 			dartSassPath = "github.com/sass/dart-sass"
 		}
-		deps = append(deps,
+		deps = append(
+			deps,
 			formatDep(dartSassPath+"/protocol", dartSass.ProtocolVersion),
 			formatDep(dartSassPath+"/compiler", dartSass.CompilerVersion),
 			formatDep(dartSassPath+"/implementation", dartSass.ImplementationVersion),
@@ -327,6 +337,12 @@ func DeprecateLevelMin(item, alternative string, version string, minLevel logg.L
 	deprecateLevel(item, alternative, version, level)
 }
 
+// DeprecateLevelMax informs about a deprecation starting at the given version, but with a maximum log level.
+func DeprecateLevelMax(item, alternative string, version string, maxLevel logg.Level) {
+	level := min(deprecationLogLevelFromVersion(version), maxLevel)
+	deprecateLevel(item, alternative, version, level)
+}
+
 // deprecateLevel informs about a deprecation logging at the given level.
 func deprecateLevel(item, alternative, version string, level logg.Level) {
 	deprecateLevelWithLogger(item, alternative, version, level, loggers.Log().Logger())
@@ -334,9 +350,6 @@ func deprecateLevel(item, alternative, version string, level logg.Level) {
 
 // DeprecateLevel informs about a deprecation logging at the given level.
 func deprecateLevelWithLogger(item, alternative, version string, level logg.Level, log logg.Logger) {
-	//if strings.Contains(item, "module.mounts.lang") || strings.Contains(item, "includeFiles") {
-	// hdebug.Panicf("Deprecated")
-	//}
 	var msg string
 	if level == logg.LevelError {
 		// Useful to debug deprecation errors that needs to be removedor fixed. Comment out when done debugging.

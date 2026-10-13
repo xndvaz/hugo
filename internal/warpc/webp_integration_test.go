@@ -19,10 +19,13 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/gohugoio/hugo/htesting"
 	"github.com/gohugoio/hugo/hugolib"
 )
 
 func TestWebPMisc(t *testing.T) {
+	htesting.SkipSlowWasmTestOn32Bit(t)
+
 	files := `
 -- assets/sunrise.webp --
 sourcefilename: ../../resources/testdata/sunrise.webp
@@ -49,6 +52,8 @@ ImageConfig: {{ printf "%d/%d" $ic.Width $ic.Height }}|
 }
 
 func TestWebPEncodeGrayscale(t *testing.T) {
+	htesting.SkipSlowWasmTestOn32Bit(t)
+
 	files := `
 -- assets/gopher.png --
 sourcefilename: ../../resources/testdata/bw-gopher.png
@@ -89,6 +94,8 @@ Resized RelPermalink: {{ $resized.RelPermalink }}|
 
 // This test isn't great, but we have golden tests to verify the output itself.
 func TestWebPAnimation(t *testing.T) {
+	htesting.SkipSlowWasmTestOn32Bit(t)
+
 	files := `
 -- hugo.toml --
 disableKinds = ["page", "section", "taxonomy", "term", "sitemap", "robotsTXT", "404"]
@@ -119,6 +126,33 @@ sourcefilename: ../../resources/testdata/giphy.gif
 	animFrameDurations := []int{80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80}
 	b.ImageHelper("public/anim_hu_edc2f24aaad2cee6.webp").AssertFormat("webp").AssertIsAnimated(true).AssertLoopCount(0).AssertFrameDurations(animFrameDurations)
 	b.ImageHelper("public/anim_hu_58eb49733894e7ce.gif").AssertFormat("gif").AssertIsAnimated(true).AssertLoopCount(0).AssertFrameDurations(animFrameDurations)
+}
+
+// See issue 14985.
+func TestWebPEncodeOutOfMemory(t *testing.T) {
+	files := `
+-- assets/gopher.png --
+sourcefilename: ../../resources/testdata/bw-gopher.png
+-- layouts/home.html --
+{{ $img := resources.Get "gopher.png" }}
+{{ $r := try ($img.Resize "3000x3000 webp") }}
+{{ with $r.Err }}BigErr: {{ . }}|{{ else }}BigOK|{{ end }}
+{{ $small := $img.Resize "32x32 webp" }}
+SmallAfter: {{ $small.RelPermalink }}|
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptWithConfig(func(c *hugolib.IntegrationTestConfig) {
+		c.WarpcMemory = 8
+	}))
+
+	// The big resize must fail gracefully (caught by try) ...
+	b.AssertFileContent("public/index.html",
+		"BigErr:",
+		"out of memory allocating",
+		"for blob data",
+		// ... and the dispatcher must still process images afterwards.
+		"SmallAfter: /gopher_",
+	)
 }
 
 func BenchmarkWebp(b *testing.B) {

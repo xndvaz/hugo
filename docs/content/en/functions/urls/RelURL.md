@@ -8,10 +8,9 @@ params:
     aliases: [relURL]
     returnType: string
     signatures: [urls.RelURL INPUT]
-aliases: [/functions/relurl]
 ---
 
-With multilingual configurations, use the [`urls.RelLangURL`] function instead. The URL returned by this function depends on:
+With multilingual configurations, use the [`urls.RelLangURL`][] function instead. The URL returned by this function depends on:
 
 - Whether the input begins with a slash (`/`)
 - The `baseURL` in your project configuration
@@ -66,7 +65,7 @@ With `baseURL = https://example.org/docs/`
 {{ relURL "/style.css" }} → /style.css
 ```
 
-> [!note]
+> [!NOTE]
 > As illustrated by the previous example, using a leading slash is rarely desirable and can lead to unexpected outcomes. In nearly all cases, omit the leading slash.
 
 [`urls.RelLangURL`]: /functions/urls/rellangurl/

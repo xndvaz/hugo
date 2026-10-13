@@ -19,7 +19,7 @@
 #include <webp/decode.h>
 #include "webp/demux.h"
 #include <webp/mux.h>
-#include "deps/parson/parson.h"
+#include "../deps/parson/parson.h"
 
 void handle_commands(FILE *stream);
 
@@ -81,6 +81,7 @@ typedef struct
 
     bool useSharpYuv; // use sharp YUV for better quality.
     int method;       // quality/speed trade-off (0=fast, 6=slower-better). Default is 2.
+    bool firstFrameOnly; // decode only the first frame of animated images.
 
 } InputOptions;
 
@@ -413,6 +414,7 @@ InputMessage parse_input_message(const char *line)
                 msg.data.options.hint[sizeof(msg.data.options.hint) - 1] = '\0';
             }
             msg.data.options.useSharpYuv = json_object_get_number(options_object, "useSharpYuv") != 0;
+            msg.data.options.firstFrameOnly = json_object_get_boolean(options_object, "firstFrameOnly") == 1;
             msg.data.options.method = (int)json_object_get_number(options_object, "method");
             if (msg.data.options.method < 0 || msg.data.options.method > 6)
             {
@@ -524,6 +526,23 @@ void write_output_message(const OutputMessage *msg)
     json_value_free(root_value);
 }
 
+// drain_bytes discards n bytes from stream. Used to keep the protocol aligned
+// after an error that prevents the blob from being consumed normally.
+static void drain_bytes(FILE *stream, size_t n)
+{
+    uint8_t buf[4096];
+    while (n > 0)
+    {
+        size_t want = n < sizeof(buf) ? n : sizeof(buf);
+        size_t got = fread(buf, 1, want, stream);
+        if (got == 0)
+        {
+            break;
+        }
+        n -= got;
+    }
+}
+
 void handle_commands(FILE *stream)
 {
 
@@ -559,7 +578,15 @@ void handle_commands(FILE *stream)
         blob_data = malloc((size_t)blob_size);
         if (blob_data == NULL)
         {
-            fprintf(stderr, "[%d] Error allocating memory for blob data\n", blob_id);
+            // Out of memory. Drain the blob from the input stream so the next
+            // command stays aligned, then report the error to the client instead
+            // of leaving the stream corrupted with no response.
+            drain_bytes(stream, (size_t)blob_size);
+            OutputMessage err_output = {0};
+            err_output.header = input.header;
+            snprintf(err_output.header.err, sizeof(err_output.header.err),
+                     "out of memory allocating %u bytes for blob data", blob_size);
+            write_output_message(&err_output);
             goto cleanup;
         }
         read_bytes = fread(blob_data, 1, (size_t)blob_size, stream);
@@ -618,22 +645,28 @@ void handle_commands(FILE *stream)
                 output.data.params.width = anim_info.canvas_width;
                 output.data.params.height = anim_info.canvas_height;
                 output.data.params.stride = anim_info.canvas_width * 4;
-                output.data.params.frameCount = anim_info.frame_count;
+                // Without frame durations, the first frame is returned as a still image.
+                uint32_t frame_count = input.data.options.firstFrameOnly ? 1 : anim_info.frame_count;
+                output.data.params.frameCount = frame_count;
                 output.data.params.loopCount = anim_info.loop_count;
                 output.data.params.hasAlpha = true; // Animated WebP always decoded as RGBA
 
-                int *frameDurations = malloc(sizeof(int) * anim_info.frame_count);
-                if (frameDurations == NULL)
+                int *frameDurations = NULL;
+                if (!input.data.options.firstFrameOnly)
                 {
-                    strncpy(output.header.err, "Failed to allocate memory for frame durations", sizeof(output.header.err) - 1);
-                    write_output_message(&output);
-                    WebPAnimDecoderDelete(dec);
-                    goto cleanup;
+                    frameDurations = malloc(sizeof(int) * anim_info.frame_count);
+                    if (frameDurations == NULL)
+                    {
+                        strncpy(output.header.err, "Failed to allocate memory for frame durations", sizeof(output.header.err) - 1);
+                        write_output_message(&output);
+                        WebPAnimDecoderDelete(dec);
+                        goto cleanup;
+                    }
                 }
                 output.data.params.frameDurations = frameDurations;
 
                 // Use a demuxer to get frame durations.
-                WebPDemuxer *demux = WebPDemux(&data);
+                WebPDemuxer *demux = frameDurations != NULL ? WebPDemux(&data) : NULL;
                 if (demux != NULL)
                 {
                     WebPIterator iter;
@@ -653,7 +686,7 @@ void handle_commands(FILE *stream)
                 }
 
                 size_t frame_size = (size_t)anim_info.canvas_width * 4 * anim_info.canvas_height;
-                size_t all_frames_size = frame_size * anim_info.frame_count;
+                size_t all_frames_size = frame_size * frame_count;
                 uint8_t *output_buffer = malloc(all_frames_size);
 
                 if (output_buffer == NULL)
@@ -666,8 +699,8 @@ void handle_commands(FILE *stream)
                     goto cleanup;
                 }
 
-                int frame_index = 0;
-                while (WebPAnimDecoderHasMoreFrames(dec))
+                uint32_t frame_index = 0;
+                while (frame_index < frame_count && WebPAnimDecoderHasMoreFrames(dec))
                 {
                     uint8_t *frame_rgba;
                     int timestamp;

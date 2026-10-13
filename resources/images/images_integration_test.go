@@ -14,8 +14,10 @@
 package images_test
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/bep/logg"
 	"github.com/gohugoio/hugo/htesting"
 	"github.com/gohugoio/hugo/hugolib"
 )
@@ -79,6 +81,55 @@ Colors: {{ $colors }}|
 	}
 }
 
+func TestImageCropSmartKeepsTargetSizeIssue13688(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+disableKinds = ['page','rss','section','sitemap','taxonomy','term']
+-- assets/sunset.jpg --
+sourcefilename: ../testdata/sunset.jpg
+-- layouts/home.html --
+{{ with resources.Get "sunset.jpg" }}
+Original: {{ .Width }}x{{ .Height }}|
+{{- with .Crop "900x561 TopLeft" -}}
+CropTopLeft: {{ .Width }}x{{ .Height }}|
+{{- end -}}
+{{- with .Crop "900x561 Smart" -}}
+CropSmart: {{ .Width }}x{{ .Height }}|
+{{- end -}}
+{{ end }}
+`
+
+	b := hugolib.Test(t, files)
+
+	b.AssertFileContent("public/index.html", "Original: 900x562|CropTopLeft: 900x561|CropSmart: 900x561|")
+}
+
+func TestImagingGlobalsDeprecated(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+[imaging]
+quality = 70
+hint = "picture"
+compression = "lossless"
+-- layouts/home.html --
+Home.
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptWithConfig(func(cfg *hugolib.IntegrationTestConfig) {
+		cfg.LogLevel = logg.LevelInfo
+	}))
+
+	b.AssertLogContains(
+		"project config key imaging.quality was deprecated in Hugo v0.163.0",
+		"project config key imaging.hint was deprecated in Hugo v0.163.0",
+		"project config key imaging.compression was deprecated in Hugo v0.163.0",
+	)
+}
+
 func BenchmarkImageResize(b *testing.B) {
 	files := `
 -- content/p1/sunrise.jpg --
@@ -131,4 +182,132 @@ Page.
 		b.StartTimer()
 		builder.Build()
 	}
+}
+
+// See issue 15430.
+func TestImageFrameCount(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+-- assets/giphy.gif --
+sourcefilename: ../testdata/giphy.gif
+-- assets/pix.gif --
+sourcefilename: ../testdata/pix.gif
+-- assets/giphy.avif --
+sourcefilename: ../testdata/giphy.avif
+-- assets/anim.webp --
+sourcefilename: ../testdata/webp/anim.webp
+-- assets/sunset.webp --
+sourcefilename: ../testdata/sunset.webp
+-- assets/sunset.jpg --
+sourcefilename: ../testdata/sunset.jpg
+-- assets/gohugoio.png --
+sourcefilename: ../testdata/gohugoio.png
+-- layouts/home.html --
+{{ $giphy := resources.Get "giphy.gif" }}
+{{ $avif := resources.Get "giphy.avif" }}
+giphy.gif: {{ $giphy.FrameCount }}|
+giphy.gif resized: {{ ($giphy.Resize "10x").FrameCount }}|
+giphy.gif to webp: {{ ($giphy.Resize "10x webp").FrameCount }}|
+giphy.gif to jpg: {{ ($giphy.Resize "10x jpg").FrameCount }}|
+giphy.avif: {{ $avif.FrameCount }}|
+giphy.avif resized: {{ ($avif.Resize "10x").FrameCount }}|
+anim.webp: {{ (resources.Get "anim.webp").FrameCount }}|
+pix.gif: {{ (resources.Get "pix.gif").FrameCount }}|
+sunset.webp: {{ (resources.Get "sunset.webp").FrameCount }}|
+sunset.jpg: {{ (resources.Get "sunset.jpg").FrameCount }}|
+gohugoio.png: {{ (resources.Get "gohugoio.png").FrameCount }}|
+`
+
+	b := hugolib.Test(t, files)
+
+	b.AssertFileContent("public/index.html",
+		"giphy.gif: 14|",
+		"giphy.gif resized: 14|",
+		"giphy.gif to webp: 14|",
+		"giphy.gif to jpg: 1|",
+		"giphy.avif: 14|",
+		"giphy.avif resized: 1|",
+		"anim.webp: 17|",
+		"pix.gif: 1|",
+		"sunset.webp: 1|",
+		"sunset.jpg: 1|",
+		"gohugoio.png: 1|",
+	)
+}
+
+// See issue 15433.
+func TestImageFirstFrameOnly(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- hugo.toml --
+[imaging]
+firstFrameOnly = IMAGING_FIRST_FRAME_ONLY
+-- assets/giphy.gif --
+sourcefilename: ../testdata/giphy.gif
+-- assets/anim.webp --
+sourcefilename: ../testdata/webp/anim.webp
+-- layouts/home.html --
+{{ $giphy := resources.Get "giphy.gif" }}
+{{ $webp := resources.Get "anim.webp" }}
+giphy.gif resized: {{ ($giphy.Resize "10x").FrameCount }}|
+giphy.gif processed firstFrameOnly: {{ ($giphy.Process "resize 10x firstFrameOnly").FrameCount }}|
+anim.webp resized: {{ ($webp.Resize "10x").FrameCount }}|
+anim.webp processed firstFrameOnly: {{ ($webp.Process "resize 10x firstFrameOnly").FrameCount }}|
+`
+
+	b := hugolib.Test(t, strings.ReplaceAll(files, "IMAGING_FIRST_FRAME_ONLY", "false"))
+	b.AssertFileContent("public/index.html",
+		"giphy.gif resized: 14|",
+		"giphy.gif processed firstFrameOnly: 1|",
+		"anim.webp resized: 17|",
+		"anim.webp processed firstFrameOnly: 1|",
+	)
+
+	b = hugolib.Test(t, strings.ReplaceAll(files, "IMAGING_FIRST_FRAME_ONLY", "true"))
+	b.AssertFileContent("public/index.html",
+		"giphy.gif resized: 1|",
+		"giphy.gif processed firstFrameOnly: 1|",
+		"anim.webp resized: 1|",
+		"anim.webp processed firstFrameOnly: 1|",
+	)
+}
+
+// See issue 15433.
+func TestImageAnimationMemoryLimit(t *testing.T) {
+	t.Parallel()
+
+	files := `
+-- assets/giphy.gif --
+sourcefilename: ../testdata/giphy.gif
+-- assets/anim.webp --
+sourcefilename: ../testdata/webp/anim.webp
+-- assets/giphy.avif --
+sourcefilename: ../testdata/giphy.avif
+-- layouts/home.html --
+{{ $giphy := resources.Get "giphy.gif" }}
+{{ $webp := resources.Get "anim.webp" }}
+{{ $avif := resources.Get "giphy.avif" }}
+{{ with try ($webp.Resize "10x") }}Decode: {{ .Err }}|{{ end }}
+{{ with try ($giphy.Resize "480x webp") }}Encode: {{ .Err }}|{{ end }}
+anim.webp firstFrameOnly: {{ ($webp.Resize "10x firstFrameOnly").FrameCount }}|
+anim.webp to jpg: {{ ($webp.Resize "10x jpg").FrameCount }}|
+giphy.gif to webp firstFrameOnly: {{ ($giphy.Resize "480x webp firstFrameOnly").FrameCount }}|
+giphy.avif resized: {{ ($avif.Resize "10x").FrameCount }}|
+`
+
+	b := hugolib.Test(t, files, hugolib.TestOptWithConfig(func(c *hugolib.IntegrationTestConfig) {
+		c.WarpcMemory = 8
+	}))
+
+	b.AssertFileContent("public/index.html",
+		"anim.webp: 17 frames of 500x360 need at least 11 MiB of memory, the limit is 8 MiB; consider using firstFrameOnly|",
+		"giphy.gif&#34;: 14 frames of 480x480 need at least 12 MiB of memory, the limit is 8 MiB; consider using firstFrameOnly|",
+		"anim.webp firstFrameOnly: 1|",
+		"anim.webp to jpg: 1|",
+		"giphy.gif to webp firstFrameOnly: 1|",
+		"giphy.avif resized: 1|",
+	)
 }

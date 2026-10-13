@@ -72,16 +72,14 @@ type Config struct {
 // can be set if position of first shortcode is known
 func newPageLexer(input []byte, stateStart stateFunc, cfg Config) *pageLexer {
 	lexer := &pageLexer{
-		input:          input,
-		stateStart:     stateStart,
-		summaryDivider: summaryDivider,
-		cfg:            cfg,
-		lexerShortcodeState: lexerShortcodeState{
-			currLeftDelimItem:  tLeftDelimScNoMarkup,
-			currRightDelimItem: tRightDelimScNoMarkup,
-			openShortcodes:     make(map[unique.Handle[string]]bool),
-		},
-		items: make([]Item, 0, 5),
+		input:              input,
+		stateStart:         stateStart,
+		summaryDivider:     summaryDivider,
+		cfg:                cfg,
+		currLeftDelimItem:  tLeftDelimScNoMarkup,
+		currRightDelimItem: tRightDelimScNoMarkup,
+		openShortcodes:     make(map[unique.Handle[string]]bool),
+		items:              make([]Item, 0, 5),
 	}
 
 	lexer.sectionHandlers = createSectionHandlers(lexer)
@@ -99,7 +97,6 @@ func (l *pageLexer) run() *pageLexer {
 
 // Page syntax
 var (
-	byteOrderMark     = '\ufeff'
 	summaryDivider    = []byte("<!--more-->")
 	summaryDividerOrg = []byte("# more")
 	delimTOML         = []byte("+++")
@@ -248,7 +245,7 @@ func (l *pageLexer) consumeCRLF() bool {
 func (l *pageLexer) consumeToSpace() {
 	for {
 		r := l.next()
-		if r == eof || unicode.IsSpace(r) {
+		if r == eof || isASCIISpace(r) {
 			l.backup()
 			return
 		}
@@ -258,7 +255,7 @@ func (l *pageLexer) consumeToSpace() {
 func (l *pageLexer) consumeSpace() {
 	for {
 		r := l.next()
-		if r == eof || !unicode.IsSpace(r) {
+		if r == eof || !isASCIISpace(r) {
 			l.backup()
 			return
 		}
@@ -497,7 +494,7 @@ func minIndex(indices ...int) int {
 
 func indexNonWhiteSpace(s []byte, in rune) int {
 	idx := bytes.IndexFunc(s, func(r rune) bool {
-		return !unicode.IsSpace(r)
+		return !isASCIISpace(r)
 	})
 
 	if idx == -1 {
@@ -511,8 +508,12 @@ func indexNonWhiteSpace(s []byte, in rune) int {
 	return -1
 }
 
-func isSpace(r rune) bool {
-	return r == ' ' || r == '\t'
+func isASCIISpace(r rune) bool {
+	switch r {
+	case '\t', '\n', '\v', '\f', '\r', ' ':
+		return true
+	}
+	return false
 }
 
 func isAlphaNumericOrHyphen(r rune) bool {

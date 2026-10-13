@@ -8,10 +8,11 @@ params:
     aliases: [union]
     returnType: '[]any'
     signatures: [collections.Union SLICE1 SLICE2]
-aliases: [/functions/union] 
 ---
 
+## Basic usage
 
+Use the `union` function to combine two slices, removing duplicate elements:
 
 ```go-html-template
 {{ union (slice 1 2 3) (slice 3 4 5) }} → [1 2 3 4 5]
@@ -22,7 +23,7 @@ aliases: [/functions/union]
 
 ## OR filter in where query
 
-This is also very useful to use as `OR` filters when combined with where:
+This is also useful as `OR` filters when combined with where:
 
 ```go-html-template
 {{ $pages := where .Site.RegularPages "Type" "not in" (slice "page" "about") }}
@@ -32,4 +33,6 @@ This is also very useful to use as `OR` filters when combined with where:
 
 The above fetches regular pages not of `page` or `about` type unless they are pinned. And finally, we exclude all pages with no `images` set in Page parameters.
 
-See [intersect](/functions/collections/intersect) for `AND`.
+See [intersect][] for `AND`.
+
+[intersect]: /functions/collections/intersect/

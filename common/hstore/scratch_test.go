@@ -14,7 +14,6 @@
 package hstore
 
 import (
-	"reflect"
 	"sync"
 	"testing"
 
@@ -69,9 +68,8 @@ func TestScratchAddSlice(t *testing.T) {
 	sl := scratch.Get("intSlice")
 	expected := []int{1, 2, 3}
 
-	if !reflect.DeepEqual(expected, sl) {
-		t.Errorf("Slice difference, go %q expected %q", sl, expected)
-	}
+	c.Assert(sl, qt.DeepEquals, expected)
+
 	_, err = scratch.Add("intSlice", []int{4, 5})
 
 	c.Assert(err, qt.IsNil)
@@ -79,9 +77,7 @@ func TestScratchAddSlice(t *testing.T) {
 	sl = scratch.Get("intSlice")
 	expected = []int{1, 2, 3, 4, 5}
 
-	if !reflect.DeepEqual(expected, sl) {
-		t.Errorf("Slice difference, go %q expected %q", sl, expected)
-	}
+	c.Assert(sl, qt.DeepEquals, expected)
 }
 
 // https://github.com/gohugoio/hugo/issues/5275
@@ -209,6 +205,30 @@ func TestScratchGetSortedMapValues(t *testing.T) {
 	if nothing != nil {
 		t.Errorf("Should not return anything, but got %v", nothing)
 	}
+}
+
+func TestScratchGetSortedMapValuesConcurrentWithSetInMap(t *testing.T) {
+	t.Parallel()
+	scratch := NewScratch()
+	scratch.SetInMap("key", "initial", "initial")
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := range 1000 {
+			scratch.SetInMap("key", "value", i)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 1000 {
+			scratch.GetSortedMapValues("key")
+		}
+	}()
+
+	wg.Wait()
 }
 
 func BenchmarkScratchGet(b *testing.B) {
